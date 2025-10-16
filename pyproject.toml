@@ -6,12 +6,28 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "alembic>=1.17.0",
+    "argon2-cffi>=25.1.0",
     "asyncpg>=0.30.0",
     "fastapi[standard]>=0.119.0",
     "greenlet>=3.2.4",
+    "passlib[bcrypt]>=1.7.4",
     "psycopg2-binary>=2.9.11",
     "pydantic-settings>=2.11.0",
     "python-dotenv>=1.1.1",
+    "python-jose[cryptography]>=3.5.0",
     "ruff>=0.14.0",
     "sqlalchemy[async]>=2.0.44",
 ]
+
+[dependency-groups]
+dev = [
+    "faker>=37.11.0",
+    "httpx>=0.28.1",
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
+    "pytest-cov>=7.0.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
