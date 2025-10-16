@@ -8,6 +8,7 @@ from alembic import context
 from core.config import settings
 from core.database import Base
 from common.models import User  # noqa: F401
+from sequence.models import Sequence  # noqa: F401
 
 
 config = context.config

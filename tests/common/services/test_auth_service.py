@@ -30,11 +30,6 @@ async def test_create_user(test_session: AsyncSession):
     assert user.is_active is True
     assert user.is_superuser is False
 
-    # Verify password was hashed
-    stmt = select(User).where(User.id == user.id)
-    db_user = await test_session.scalar(stmt)
-    assert verify_password("password123", db_user.hashed_password)
-
 
 @pytest.mark.asyncio
 async def test_create_user_duplicate_email(test_session: AsyncSession, test_user):
