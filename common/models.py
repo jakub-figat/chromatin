@@ -6,7 +6,8 @@ from core.database import Base
 
 
 if TYPE_CHECKING:
-    from sequence.models import Sequence
+    from sequences.models import Sequence
+    from projects.models import Project
 
 
 class User(Base):
@@ -22,8 +23,11 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
     is_superuser: Mapped[bool] = mapped_column(default=False, nullable=False)
 
-    sequences: Mapped["Sequence"] = relationship(
-        "Sequence", back_populates="user", lazy="raise"
+    sequences: Mapped[list["Sequence"]] = relationship(
+        back_populates="user", lazy="raise"
+    )
+    projects: Mapped[list["Project"]] = relationship(
+        back_populates="user", lazy="raise"
     )
 
     def __repr__(self) -> str:

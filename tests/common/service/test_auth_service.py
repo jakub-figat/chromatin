@@ -1,18 +1,16 @@
 """Test authentication service functions"""
 
 import pytest
-from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.models import User
-from common.services import (
+from common.service import (
     create_user,
     authenticate_user,
     get_user_by_id,
     get_user_by_email,
 )
 from common.schemas import UserCreate
-from core.security import verify_password
 
 
 @pytest.mark.asyncio

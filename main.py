@@ -1,8 +1,13 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from core.config import settings
 from common.routes import router as auth_router
+from core.exceptions import NotFoundError, PermissionDeniedError
+from sequences.routes import router as sequences_router
+from projects.routes import router as projects_router
 
 
 app = FastAPI(
@@ -29,5 +34,20 @@ async def health_check():
     return {"status": "healthy"}
 
 
-# Include auth routes
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
+app.include_router(projects_router, prefix="/api/projects", tags=["projects"])
+app.include_router(sequences_router, prefix="/api/sequences", tags=["sequences"])
+
+
+@app.exception_handler(NotFoundError)
+async def not_found_handler(request: Request, exc: NotFoundError):
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND, content={"detail": str(exc)}
+    )
+
+
+@app.exception_handler(PermissionDeniedError)
+async def permission_denied_handler(request: Request, exc: PermissionDeniedError):
+    return JSONResponse(
+        status_code=status.HTTP_403_FORBIDDEN, content={"detail": str(exc)}
+    )

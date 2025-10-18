@@ -1,8 +1,7 @@
-import asyncio
 from typing import AsyncGenerator
 import pytest
 from httpx import AsyncClient, ASGITransport
-from sqlalchemy import make_url
+from sqlalchemy import make_url, text
 from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -15,7 +14,7 @@ from core.config import settings
 @pytest.fixture(scope="session")
 async def test_engine() -> AsyncGenerator[AsyncEngine, None]:
     url = make_url(settings.DATABASE_URL)
-    TEST_DATABASE_URL = url.set(database="chromatin").render_as_string(
+    TEST_DATABASE_URL = url.set(database="chromatin_test").render_as_string(
         hide_password=False
     )
 
@@ -26,14 +25,15 @@ async def test_engine() -> AsyncGenerator[AsyncEngine, None]:
         poolclass=NullPool,  # Don't pool connections in tests
     )
 
-    # Create all tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
     yield engine
 
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+        # Drop all tables with CASCADE
+        await conn.execute(text("DROP SCHEMA public CASCADE"))
+        await conn.execute(text("CREATE SCHEMA public"))
 
     await engine.dispose()
 
@@ -120,11 +120,11 @@ async def auth_headers(client: AsyncClient, test_user) -> dict[str, str]:
 
 
 @pytest.fixture
-async def superuser_headers(client: AsyncClient, superuser) -> dict[str, str]:
+async def superuser_headers(client: AsyncClient, test_superuser) -> dict[str, str]:
     """Get authentication headers for superuser"""
     response = await client.post(
         "/api/auth/login",
-        data={"username": superuser.email, "password": "adminpass123"},
+        data={"username": test_superuser.email, "password": "adminpass123"},
     )
 
     token = response.json()["access_token"]
