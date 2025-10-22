@@ -27,12 +27,8 @@ async def get_project(
     stmt = select(models.Project).where(models.Project.id == project_id)
     project = await db.scalar(stmt)
 
-    if not project:
+    if not project or (project.user_id != user_id and not project.is_public):
         raise NotFoundError("Project", project_id)
-
-    # Check if user has access
-    if project.user_id != user_id and not project.is_public:
-        raise PermissionDeniedError("access", "project")
 
     return schemas.ProjectResponse.model_validate(project)
 

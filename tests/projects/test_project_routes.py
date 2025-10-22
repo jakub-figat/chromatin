@@ -132,7 +132,7 @@ async def test_get_other_user_private_project(
         f"/api/projects/{project_id}", headers=superuser_headers
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio

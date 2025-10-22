@@ -84,6 +84,26 @@ async def test_user(test_session: AsyncSession):
 
 
 @pytest.fixture
+async def test_user_2(test_session: AsyncSession):
+    from common.models import User
+    from core.security import get_password_hash
+
+    user = User(
+        email="test_2@example.com",
+        username="testuser_2",
+        hashed_password=get_password_hash("testpass1234"),
+        is_active=True,
+        is_superuser=False,
+    )
+
+    test_session.add(user)
+    await test_session.flush()
+    await test_session.refresh(user)
+
+    return user
+
+
+@pytest.fixture
 async def test_superuser(test_session: AsyncSession):
     """Create a test superuser"""
     from common.models import User
