@@ -5,11 +5,11 @@ from sqlalchemy import pool
 
 from alembic import context
 
-from core.config import settings
-from core.database import Base
+from core import settings
+from core import Base
 from common.models import User  # noqa: F401
-from sequences.models import Sequence  # noqa: F401
-from projects.models import Project  # noqa: F401
+from sequences import Sequence  # noqa: F401
+from projects import Project  # noqa: F401
 
 
 config = context.config
