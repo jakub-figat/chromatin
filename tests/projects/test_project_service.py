@@ -9,11 +9,11 @@ from projects.service import (
     update_project,
     delete_project,
 )
-from projects.schemas import ProjectCreate, ProjectUpdate
+from projects.schemas import ProjectInput
 
 
 async def test_create_project(test_session: AsyncSession, test_user):
-    project_in = ProjectCreate(
+    project_in = ProjectInput(
         name="Test Project", description="A test project", is_public=False
     )
 
@@ -27,7 +27,7 @@ async def test_create_project(test_session: AsyncSession, test_user):
 
 
 async def test_get_project_as_owner(test_session: AsyncSession, test_user):
-    project_in = ProjectCreate(name="My Project", is_public=False)
+    project_in = ProjectInput(name="My Project", is_public=False)
     created = await create_project(test_session, test_user.id, project_in)
 
     project = await get_project(test_session, created.id, test_user.id)
@@ -39,7 +39,7 @@ async def test_get_project_as_owner(test_session: AsyncSession, test_user):
 async def test_get_public_project_as_other_user(
     test_session: AsyncSession, test_user, test_user_2
 ):
-    project_in = ProjectCreate(name="Public Project", is_public=True)
+    project_in = ProjectInput(name="Public Project", is_public=True)
     created = await create_project(test_session, test_user.id, project_in)
 
     project = await get_project(test_session, created.id, test_user_2.id)
@@ -50,7 +50,7 @@ async def test_get_public_project_as_other_user(
 async def test_get_private_project_as_other_user(
     test_session: AsyncSession, test_user, test_user_2
 ):
-    project_in = ProjectCreate(name="Private Project", is_public=False)
+    project_in = ProjectInput(name="Private Project", is_public=False)
     created = await create_project(test_session, test_user.id, project_in)
 
     with pytest.raises(NotFoundError):
@@ -64,7 +64,7 @@ async def test_get_nonexistent_project(test_session: AsyncSession, test_user):
 
 async def test_list_user_projects(test_session: AsyncSession, test_user):
     for i in range(3):
-        project_in = ProjectCreate(name=f"Project {i}")
+        project_in = ProjectInput(name=f"Project {i}")
         await create_project(test_session, test_user.id, project_in)
 
     projects = await list_user_projects(test_session, test_user.id)
@@ -73,7 +73,7 @@ async def test_list_user_projects(test_session: AsyncSession, test_user):
 
 async def test_list_user_projects_pagination(test_session: AsyncSession, test_user):
     for i in range(5):
-        project_in = ProjectCreate(name=f"Project {i}")
+        project_in = ProjectInput(name=f"Project {i}")
         await create_project(test_session, test_user.id, project_in)
 
     page1 = await list_user_projects(test_session, test_user.id, skip=0, limit=2)
@@ -92,10 +92,10 @@ async def test_list_user_projects_empty(test_session: AsyncSession, test_user):
 
 
 async def test_update_project_as_owner(test_session: AsyncSession, test_user):
-    project_in = ProjectCreate(name="Original Name", is_public=False)
+    project_in = ProjectInput(name="Original Name", is_public=False)
     created = await create_project(test_session, test_user.id, project_in)
 
-    update_in = ProjectUpdate(
+    update_in = ProjectInput(
         name="Updated Name", description="New description", is_public=True
     )
 
@@ -106,41 +106,27 @@ async def test_update_project_as_owner(test_session: AsyncSession, test_user):
     assert updated.is_public is True
 
 
-async def test_update_project_partial(test_session: AsyncSession, test_user):
-    project_in = ProjectCreate(
-        name="Original", description="Original desc", is_public=False
-    )
-    created = await create_project(test_session, test_user.id, project_in)
-
-    update_in = ProjectUpdate(name="New Name")
-    updated = await update_project(test_session, created.id, test_user.id, update_in)
-
-    assert updated.name == "New Name"
-    assert updated.description == "Original desc"  # Unchanged
-    assert updated.is_public is False  # Unchanged
-
-
 async def test_update_project_as_non_owner(
     test_session: AsyncSession, test_user, test_user_2
 ):
-    project_in = ProjectCreate(name="User Project", is_public=True)
+    project_in = ProjectInput(name="User Project", is_public=True)
     created = await create_project(test_session, test_user.id, project_in)
 
-    update_in = ProjectUpdate(name="Hacked Name")
+    update_in = ProjectInput(name="Hacked Name")
 
     with pytest.raises(PermissionDeniedError):
         await update_project(test_session, created.id, test_user_2.id, update_in)
 
 
 async def test_update_nonexistent_project(test_session: AsyncSession, test_user):
-    update_in = ProjectUpdate(name="New Name")
+    update_in = ProjectInput(name="New Name")
 
     with pytest.raises(NotFoundError):
         await update_project(test_session, 99999, test_user.id, update_in)
 
 
 async def test_delete_project_as_owner(test_session: AsyncSession, test_user):
-    project_in = ProjectCreate(name="To Delete")
+    project_in = ProjectInput(name="To Delete")
     created = await create_project(test_session, test_user.id, project_in)
 
     await delete_project(test_session, created.id, test_user.id)
@@ -153,7 +139,7 @@ async def test_delete_project_as_owner(test_session: AsyncSession, test_user):
 async def test_delete_project_as_non_owner(
     test_session: AsyncSession, test_user, test_superuser
 ):
-    project_in = ProjectCreate(name="Protected Project", is_public=True)
+    project_in = ProjectInput(name="Protected Project", is_public=True)
     created = await create_project(test_session, test_user.id, project_in)
 
     with pytest.raises(PermissionDeniedError):

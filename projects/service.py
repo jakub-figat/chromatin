@@ -1,41 +1,67 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from common.enums import AccessType
 from core.exceptions import NotFoundError, PermissionDeniedError
-from projects import schemas, models
+from projects import schemas, models, Project
+from projects.schemas import ProjectOutput
+
+
+def check_project_access(
+    project: Project | ProjectOutput,
+    user_id: int,
+    access_type: AccessType = AccessType.READ,
+    raise_exception: bool = False,
+) -> bool:
+    if project.user_id == user_id:
+        return True
+
+    access = access_type == AccessType.READ and project.is_public
+
+    if raise_exception and not access:
+        if project.is_public:
+            raise PermissionDeniedError("update", "project")
+        else:
+            raise NotFoundError("project", project.id)
+
+    return access
 
 
 async def create_project(
-    db: AsyncSession, user_id: int, project_in: schemas.ProjectCreate
-) -> schemas.ProjectResponse:
+    db: AsyncSession, user_id: int, project_input: schemas.ProjectInput
+) -> schemas.ProjectOutput:
     db_project = models.Project(
-        name=project_in.name,
-        description=project_in.description,
-        is_public=project_in.is_public if project_in.is_public is not None else False,
+        name=project_input.name,
+        description=project_input.description,
+        is_public=project_input.is_public
+        if project_input.is_public is not None
+        else False,
         user_id=user_id,
     )
 
     db.add(db_project)
     await db.flush()
 
-    return schemas.ProjectResponse.model_validate(db_project)
+    return schemas.ProjectOutput.model_validate(db_project)
 
 
 async def get_project(
     db: AsyncSession, project_id: int, user_id: int
-) -> schemas.ProjectResponse:
+) -> schemas.ProjectOutput:
     stmt = select(models.Project).where(models.Project.id == project_id)
     project = await db.scalar(stmt)
 
-    if not project or (project.user_id != user_id and not project.is_public):
+    if not project:
         raise NotFoundError("Project", project_id)
 
-    return schemas.ProjectResponse.model_validate(project)
+    check_project_access(project, user_id, AccessType.READ, raise_exception=True)
+
+    return schemas.ProjectOutput.model_validate(project)
 
 
 async def list_user_projects(
     db: AsyncSession, user_id: int, skip: int = 0, limit: int = 100
-) -> list[schemas.ProjectResponse]:
+) -> list[schemas.ProjectOutput]:
     """List all projects owned by a user"""
     stmt = (
         select(models.Project)
@@ -46,34 +72,27 @@ async def list_user_projects(
     )
 
     results = await db.scalars(stmt)
-    return [schemas.ProjectResponse.model_validate(project) for project in results]
+    return [schemas.ProjectOutput.model_validate(project) for project in results]
 
 
 async def update_project(
-    db: AsyncSession, project_id: int, user_id: int, project_in: schemas.ProjectUpdate
-) -> schemas.ProjectResponse:
+    db: AsyncSession, project_id: int, user_id: int, project_input: schemas.ProjectInput
+) -> schemas.ProjectOutput:
     stmt = select(models.Project).where(models.Project.id == project_id)
     db_project = await db.scalar(stmt)
 
     if not db_project:
         raise NotFoundError("Project", project_id)
 
-    if db_project.user_id != user_id:
-        if db_project.is_public:
-            raise PermissionDeniedError("delete", "project")
-        else:
-            raise NotFoundError("project", project_id)
+    check_project_access(db_project, user_id, AccessType.WRITE, raise_exception=True)
 
-    if project_in.name is not None:
-        db_project.name = project_in.name
-    if project_in.description is not None:
-        db_project.description = project_in.description
-    if project_in.is_public is not None:
-        db_project.is_public = project_in.is_public
+    db_project.name = project_input.name
+    db_project.description = project_input.description
+    db_project.is_public = project_input.is_public
 
     await db.flush()
 
-    return schemas.ProjectResponse.model_validate(db_project)
+    return schemas.ProjectOutput.model_validate(db_project)
 
 
 async def delete_project(db: AsyncSession, project_id: int, user_id: int) -> None:
@@ -83,11 +102,7 @@ async def delete_project(db: AsyncSession, project_id: int, user_id: int) -> Non
     if not db_project:
         raise NotFoundError("Project", project_id)
 
-    if db_project.user_id != user_id:
-        if db_project.is_public:
-            raise PermissionDeniedError("delete", "project")
-        else:
-            raise NotFoundError("project", project_id)
+    check_project_access(db_project, user_id, AccessType.WRITE, raise_exception=True)
 
     await db.delete(db_project)
     await db.flush()

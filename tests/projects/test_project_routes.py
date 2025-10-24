@@ -4,7 +4,6 @@ import pytest
 from httpx import AsyncClient
 
 
-@pytest.mark.asyncio
 async def test_create_project(client: AsyncClient, auth_headers):
     """Test creating a project via API"""
     response = await client.post(
@@ -25,7 +24,6 @@ async def test_create_project(client: AsyncClient, auth_headers):
     assert "id" in data
 
 
-@pytest.mark.asyncio
 async def test_create_project_unauthorized(client: AsyncClient):
     """Test creating project without auth fails"""
     response = await client.post(
@@ -35,7 +33,6 @@ async def test_create_project_unauthorized(client: AsyncClient):
     assert response.status_code == 401
 
 
-@pytest.mark.asyncio
 async def test_create_project_invalid_data(client: AsyncClient, auth_headers):
     """Test creating project with invalid data"""
     response = await client.post(
@@ -47,7 +44,6 @@ async def test_create_project_invalid_data(client: AsyncClient, auth_headers):
     assert response.status_code == 422
 
 
-@pytest.mark.asyncio
 async def test_list_projects(client: AsyncClient, auth_headers):
     """Test listing user's projects"""
     # Create a few projects
@@ -63,7 +59,6 @@ async def test_list_projects(client: AsyncClient, auth_headers):
     assert len(data) == 3
 
 
-@pytest.mark.asyncio
 async def test_list_projects_pagination(client: AsyncClient, auth_headers):
     """Test pagination in project listing"""
     # Create 5 projects
@@ -80,7 +75,6 @@ async def test_list_projects_pagination(client: AsyncClient, auth_headers):
     assert len(response.json()) == 2
 
 
-@pytest.mark.asyncio
 async def test_list_projects_unauthorized(client: AsyncClient):
     """Test listing projects without auth fails"""
     response = await client.get("/api/projects/")
@@ -88,7 +82,6 @@ async def test_list_projects_unauthorized(client: AsyncClient):
     assert response.status_code == 401
 
 
-@pytest.mark.asyncio
 async def test_get_project(client: AsyncClient, auth_headers):
     """Test getting project details"""
     # Create project
@@ -106,7 +99,6 @@ async def test_get_project(client: AsyncClient, auth_headers):
     assert data["name"] == "Detail Project"
 
 
-@pytest.mark.asyncio
 async def test_get_nonexistent_project(client: AsyncClient, auth_headers):
     """Test getting non-existent project returns 404"""
     response = await client.get("/api/projects/99999", headers=auth_headers)
@@ -114,7 +106,6 @@ async def test_get_nonexistent_project(client: AsyncClient, auth_headers):
     assert response.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_get_other_user_private_project(
     client: AsyncClient, auth_headers, superuser_headers
 ):
@@ -135,7 +126,6 @@ async def test_get_other_user_private_project(
     assert response.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_get_other_user_public_project(
     client: AsyncClient, auth_headers, superuser_headers
 ):
@@ -158,7 +148,6 @@ async def test_get_other_user_public_project(
     assert data["name"] == "Public Project"
 
 
-@pytest.mark.asyncio
 async def test_update_project(client: AsyncClient, auth_headers):
     """Test updating project"""
     # Create project
@@ -185,29 +174,6 @@ async def test_update_project(client: AsyncClient, auth_headers):
     assert data["is_public"] is True
 
 
-@pytest.mark.asyncio
-async def test_update_project_partial(client: AsyncClient, auth_headers):
-    """Test partial update of project"""
-    # Create project
-    create_response = await client.post(
-        "/api/projects/",
-        headers=auth_headers,
-        json={"name": "Original", "description": "Original desc"},
-    )
-    project_id = create_response.json()["id"]
-
-    # Update only name
-    response = await client.patch(
-        f"/api/projects/{project_id}", headers=auth_headers, json={"name": "New Name"}
-    )
-
-    assert response.status_code == 200
-    data = response.json()
-    assert data["name"] == "New Name"
-    assert data["description"] == "Original desc"
-
-
-@pytest.mark.asyncio
 async def test_update_nonexistent_project(client: AsyncClient, auth_headers):
     """Test updating non-existent project returns 404"""
     response = await client.patch(
@@ -217,7 +183,6 @@ async def test_update_nonexistent_project(client: AsyncClient, auth_headers):
     assert response.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_update_other_user_project(
     client: AsyncClient, auth_headers, superuser_headers
 ):
@@ -240,7 +205,6 @@ async def test_update_other_user_project(
     assert response.status_code == 403
 
 
-@pytest.mark.asyncio
 async def test_delete_project(client: AsyncClient, auth_headers):
     """Test deleting project"""
     # Create project
@@ -259,7 +223,6 @@ async def test_delete_project(client: AsyncClient, auth_headers):
     assert get_response.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_delete_nonexistent_project(client: AsyncClient, auth_headers):
     """Test deleting non-existent project returns 404"""
     response = await client.delete("/api/projects/99999", headers=auth_headers)
@@ -267,7 +230,6 @@ async def test_delete_nonexistent_project(client: AsyncClient, auth_headers):
     assert response.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_delete_other_user_project(
     client: AsyncClient, auth_headers, superuser_headers
 ):

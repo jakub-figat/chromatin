@@ -5,10 +5,15 @@ from sqlalchemy import make_url, text
 from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from common.models import User
 from main import app
 from core.database import Base
 from core.deps import get_db
 from core.config import settings
+from projects import Project
+from sequences import Sequence
+from sequences.enums import SequenceType
+from sequences.schemas import SequenceOutput
 
 
 @pytest.fixture(scope="session")
@@ -175,3 +180,37 @@ def mock_superuser(test_superuser):
 
     if get_current_user in app.dependency_overrides:
         del app.dependency_overrides[get_current_user]
+
+
+@pytest.fixture
+async def test_project(test_session: AsyncSession, test_user: User) -> Project:
+    project = Project(
+        name="Test Project",
+        description="A test project",
+        is_public=False,
+        user_id=test_user.id,
+    )
+
+    test_session.add(project)
+    await test_session.flush()
+
+    return project
+
+
+@pytest.fixture
+async def test_sequence(
+    test_session: AsyncSession, test_user: User, test_project
+) -> Sequence:
+    sequence = Sequence(
+        name="test_sequence",
+        sequence_type=SequenceType.DNA,
+        sequence_data="ATGCATGC",
+        description="test",
+        user_id=test_user.id,
+        project_id=test_project.id,
+    )
+
+    test_session.add(sequence)
+    await test_session.flush()
+
+    return sequence

@@ -44,5 +44,5 @@ class Sequence(Base):
         if self.sequence_type != SequenceType.PROTEIN:
             return 0
 
-        # TODO
+        # TODO for protein
         return 0

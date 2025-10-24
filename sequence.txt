@@ -1,0 +1,152 @@
+Great! Let's think through the sequence module step by step.
+
+## Sequence Model - What it needs
+
+### Core fields:
+- `name` - human-readable name for the sequence
+- `sequence_data` - the actual sequence string (DNA/RNA/protein)
+- `type` - enum: DNA, RNA, or PROTEIN
+- `description` - optional text description
+- `user_id` - foreign key to User (who owns it)
+- `project_id` - foreign key to Project (optional, for organization)
+
+### Computed/cached properties (decide if stored or calculated on-demand):
+- `length` - len(sequence_data), probably calculated
+- `gc_content` - for DNA only, maybe calculated
+- `molecular_weight` - for proteins, maybe calculated
+
+### Relationships:
+- `user` - belongs to User
+- `project` - optionally belongs to Project (with `lazy="raise"`)
+
+## Project Model - Needed first
+
+Before sequences, you need a simple Project model:
+- `name` - project name
+- `description` - optional
+- `user_id` - foreign key to User
+- `is_public` - boolean (private vs public projects)
+
+**Relationships:**
+- `user` - belongs to User
+- `sequences` - has many Sequences (with `lazy="raise"`)
+
+## Implementation order:
+
+### Step 1: Project module (simpler, needed for sequences)
+**Models:**
+- `Project` model with basic fields
+
+**Service functions:**
+- `create_project(db, user_id, project_in)` - create project for user
+- `get_project(db, project_id, user_id)` - get with ownership check
+- `list_user_projects(db, user_id)` - list user's projects
+- `update_project(db, project_id, user_id, project_in)` - update if owner
+- `delete_project(db, project_id, user_id)` - delete if owner
+
+**Routes:**
+- `POST /api/projects` - create project (requires auth)
+- `GET /api/projects` - list current user's projects
+- `GET /api/projects/{id}` - get project details
+- `PUT /api/projects/{id}` - update project
+- `DELETE /api/projects/{id}` - delete project
+
+### Step 2: Sequence module (core feature)
+
+**Models:**
+- `Sequence` model with fields above
+- `SequenceType` enum (DNA, RNA, PROTEIN)
+
+**Service functions:**
+- `create_sequence(db, user_id, sequence_in)` - validate and create
+- `get_sequence(db, sequence_id, user_id)` - get with permission check
+- `list_sequences(db, user_id, project_id, filters)` - list with pagination
+- `update_sequence(db, sequence_id, user_id, sequence_in)` - update metadata
+- `delete_sequence(db, sequence_id, user_id)` - delete
+- `validate_sequence(sequence_data, type)` - check valid characters
+- `calculate_properties(sequence)` - GC content, length, etc.
+
+**Parsers (separate module):**
+- `parse_fasta(file_content)` - parse FASTA format, return list of sequences
+- `validate_fasta(file_content)` - check if valid FASTA
+- `sequences_to_fasta(sequences)` - export sequences to FASTA format
+
+**Routes:**
+- `POST /api/sequences` - create single sequence (JSON)
+- `POST /api/sequences/upload` - upload FASTA file, create multiple
+- `GET /api/sequences` - list sequences (with filters: project, type, search)
+- `GET /api/sequences/{id}` - get sequence details
+- `GET /api/sequences/{id}/properties` - get calculated properties
+- `PUT /api/sequences/{id}` - update sequence metadata
+- `DELETE /api/sequences/{id}` - delete sequence
+- `GET /api/sequences/{id}/download` - download as FASTA
+- `GET /api/sequences/export` - export multiple as FASTA (by project or IDs)
+
+### Step 3: Sequence operations (basic analysis)
+
+**Service functions:**
+- `reverse_complement(sequence_data)` - for DNA
+- `transcribe(sequence_data)` - DNA → RNA
+- `translate(sequence_data, frame)` - DNA/RNA → protein
+- `calculate_gc_content(sequence_data)` - for DNA
+- `calculate_molecular_weight(sequence_data, type)` - for protein
+
+**Routes:**
+- `POST /api/sequences/{id}/reverse-complement` - get reverse complement
+- `POST /api/sequences/{id}/transcribe` - transcribe DNA to RNA
+- `POST /api/sequences/{id}/translate` - translate to protein
+- These can return the result directly or create a new sequence
+
+## Key design decisions to make:
+
+1. **Ownership model**:
+   - Can sequences be shared?
+   - Public vs private sequences?
+   - Start simple: user owns sequences, can only see their own
+
+2. **Validation strictness**:
+   - Reject sequences with invalid characters immediately?
+   - Or allow and warn?
+   - I'd say reject - better UX
+
+3. **FASTA parsing**:
+   - Multi-sequence FASTA should create multiple Sequence records
+   - Each with its own name from the FASTA header
+   - Batch insert for performance
+
+4. **Properties calculation**:
+   - Calculate on-demand vs store in DB?
+   - For simple ones (length, GC%), calculate on-demand
+   - For expensive ones (later, like structure), store
+
+5. **Project relationship**:
+   - Should sequences REQUIRE a project?
+   - Or allow "loose" sequences?
+   - I'd say optional - start loose, can add to project later
+
+## Testing strategy:
+
+**Unit tests (services):**
+- Test validation logic
+- Test FASTA parsing (valid, invalid, multi-sequence)
+- Test sequence operations (reverse_complement, etc.)
+- Test property calculations
+- Test ownership checks
+
+**Integration tests (routes):**
+- Test CRUD operations with auth
+- Test file upload
+- Test filtering and pagination
+- Test permission enforcement (can't access other user's sequences)
+
+## What would you implement first?
+
+I'd suggest this order:
+1. **Project model + basic CRUD** (1-2 hours) - simple, gets relationships working
+2. **Sequence model** (30 min) - just the model
+3. **FASTA parser** (1 hour) - core functionality, test thoroughly
+4. **Sequence CRUD routes** (2 hours) - create, read, update, delete
+5. **Sequence operations** (1-2 hours) - reverse complement, translate, etc.
+6. **Tests** (ongoing) - write as you go
+
+Sound reasonable? Want to start with Project or jump straight to Sequence?

@@ -17,17 +17,17 @@ router = APIRouter()
 
 
 @router.post(
-    "/", response_model=schemas.ProjectResponse, status_code=status.HTTP_201_CREATED
+    "/", response_model=schemas.ProjectOutput, status_code=status.HTTP_201_CREATED
 )
 async def create_new_project(
-    project_in: schemas.ProjectCreate,
+    project_input: schemas.ProjectInput,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await create_project(db, current_user.id, project_in)
+    return await create_project(db, current_user.id, project_input)
 
 
-@router.get("/", response_model=list[schemas.ProjectResponse])
+@router.get("/", response_model=list[schemas.ProjectOutput])
 async def list_projects(
     skip: int = 0,
     limit: int = 100,
@@ -37,7 +37,7 @@ async def list_projects(
     return await list_user_projects(db, current_user.id, skip, limit)
 
 
-@router.get("/{project_id}", response_model=schemas.ProjectResponse)
+@router.get("/{project_id}", response_model=schemas.ProjectOutput)
 async def get_project_detail(
     project_id: int,
     current_user: User = Depends(get_current_user),
@@ -46,14 +46,14 @@ async def get_project_detail(
     return await get_project(db, project_id, current_user.id)
 
 
-@router.patch("/{project_id}", response_model=schemas.ProjectResponse)
+@router.patch("/{project_id}", response_model=schemas.ProjectOutput)
 async def update_project_detail(
     project_id: int,
-    project_in: schemas.ProjectUpdate,
+    project_input: schemas.ProjectInput,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await update_project(db, project_id, current_user.id, project_in)
+    return await update_project(db, project_id, current_user.id, project_input)
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)

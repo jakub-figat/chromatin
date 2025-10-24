@@ -13,7 +13,6 @@ from common.service import (
 from common.schemas import UserCreate
 
 
-@pytest.mark.asyncio
 async def test_create_user(test_session: AsyncSession):
     """Test creating a user"""
     user_in = UserCreate(
@@ -29,7 +28,6 @@ async def test_create_user(test_session: AsyncSession):
     assert user.is_superuser is False
 
 
-@pytest.mark.asyncio
 async def test_create_user_duplicate_email(test_session: AsyncSession, test_user):
     """Test that creating user with duplicate email raises error"""
     user_in = UserCreate(
@@ -42,7 +40,6 @@ async def test_create_user_duplicate_email(test_session: AsyncSession, test_user
         await create_user(test_session, user_in)
 
 
-@pytest.mark.asyncio
 async def test_create_user_duplicate_username(test_session: AsyncSession, test_user):
     """Test that creating user with duplicate username raises error"""
     user_in = UserCreate(
@@ -55,7 +52,6 @@ async def test_create_user_duplicate_username(test_session: AsyncSession, test_u
         await create_user(test_session, user_in)
 
 
-@pytest.mark.asyncio
 async def test_authenticate_user_success(test_session: AsyncSession, test_user):
     """Test successful authentication"""
     user = await authenticate_user(test_session, test_user.email, "testpass123")
@@ -65,7 +61,6 @@ async def test_authenticate_user_success(test_session: AsyncSession, test_user):
     assert user.email == test_user.email
 
 
-@pytest.mark.asyncio
 async def test_authenticate_user_wrong_password(test_session: AsyncSession, test_user):
     """Test authentication with wrong password"""
     user = await authenticate_user(test_session, test_user.email, "wrongpassword")
@@ -73,7 +68,6 @@ async def test_authenticate_user_wrong_password(test_session: AsyncSession, test
     assert user is None
 
 
-@pytest.mark.asyncio
 async def test_authenticate_user_nonexistent_email(test_session: AsyncSession):
     """Test authentication with non-existent email"""
     user = await authenticate_user(
@@ -83,7 +77,6 @@ async def test_authenticate_user_nonexistent_email(test_session: AsyncSession):
     assert user is None
 
 
-@pytest.mark.asyncio
 async def test_get_user_by_id(test_session: AsyncSession, test_user):
     """Test getting user by ID"""
     user = await get_user_by_id(test_session, test_user.id)
@@ -94,7 +87,6 @@ async def test_get_user_by_id(test_session: AsyncSession, test_user):
     assert user.username == test_user.username
 
 
-@pytest.mark.asyncio
 async def test_get_user_by_id_not_found(test_session: AsyncSession):
     """Test getting non-existent user by ID"""
     user = await get_user_by_id(test_session, 99999)
@@ -102,7 +94,6 @@ async def test_get_user_by_id_not_found(test_session: AsyncSession):
     assert user is None
 
 
-@pytest.mark.asyncio
 async def test_get_user_by_email(test_session: AsyncSession, test_user):
     """Test getting user by email"""
     user = await get_user_by_email(test_session, test_user.email)
@@ -112,7 +103,6 @@ async def test_get_user_by_email(test_session: AsyncSession, test_user):
     assert user.email == test_user.email
 
 
-@pytest.mark.asyncio
 async def test_get_user_by_email_not_found(test_session: AsyncSession):
     """Test getting non-existent user by email"""
     user = await get_user_by_email(test_session, "nonexistent@example.com")
