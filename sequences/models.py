@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, relationship, mapped_column
 from common.models import User
 from projects.models import Project
 from sequences.enums import SequenceType
+from sequences.consts import AMINO_ACID_WEIGHTS
 
 from core.database import Base
 
@@ -41,8 +42,22 @@ class Sequence(Base):
 
     @cached_property
     def molecular_weight(self) -> float:
+        """Calculate molecular weight in Daltons (Da) for protein sequences.
+
+        Returns 0 for non-protein sequences.
+        Raises KeyError if sequence contains unknown amino acids.
+        """
         if self.sequence_type != SequenceType.PROTEIN:
             return 0
 
-        # TODO for protein
-        return 0
+        # Calculate sum of amino acid weights (unchecked access will raise KeyError)
+        total_weight = sum(
+            AMINO_ACID_WEIGHTS[amino_acid] for amino_acid in self.sequence_data.upper()
+        )
+
+        # Subtract water molecules lost during peptide bond formation
+        # (n-1) peptide bonds for n amino acids, each bond releases H2O (18.015 Da)
+        water_mass = 18.015
+        peptide_bonds = len(self.sequence_data) - 1
+
+        return total_weight - (peptide_bonds * water_mass)

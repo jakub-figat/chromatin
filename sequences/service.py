@@ -7,12 +7,10 @@ from core.exceptions import ValidationError, NotFoundError, PermissionDeniedErro
 from projects.service import check_project_access
 from sequences import Sequence
 from sequences.enums import SequenceType
-from sequences.schemas import SequenceInput, SequenceOutput
+from sequences.schemas import SequenceInput, SequenceOutput, FastaUploadOutput
+from sequences.consts import DNA_CHARS, RNA_CHARS, PROTEIN_CHARS
+from sequences.fasta_parser import parse_fasta, validate_fasta_sequence
 from projects.models import Project
-
-DNA_CHARS = set("ACGT")
-RNA_CHARS = set("ACGU")
-PROTEIN_CHARS = set("ACDEFGHIKLMNPQRSTVWY")
 
 
 def check_sequence_is_valid(sequence_data: str, seq_type: SequenceType) -> bool:
@@ -193,3 +191,72 @@ async def delete_sequence(
 
     await db_session.delete(db_sequence)
     await db_session.flush()
+
+
+async def upload_fasta(
+    fasta_content: str,
+    project_id: int,
+    user_id: int,
+    db_session: AsyncSession,
+    sequence_type: SequenceType | None = None,
+) -> FastaUploadOutput:
+    """
+    Upload and parse a FASTA file, creating multiple sequences.
+
+    Args:
+        fasta_content: Content of the FASTA file
+        project_id: Project to add sequences to
+        user_id: User creating the sequences
+        db_session: Database session
+        sequence_type: Optional sequence type. If not provided, will auto-detect.
+
+    Returns:
+        FastaUploadOutput with created sequences
+
+    Raises:
+        ValidationError: If FASTA format is invalid or sequences are invalid
+        NotFoundError: If project doesn't exist
+        PermissionDeniedError: If user doesn't have write access to project
+    """
+    # Check project exists and user has write access
+    stmt = select(Project).where(Project.id == project_id)
+    db_project = await db_session.scalar(stmt)
+
+    if not db_project:
+        raise NotFoundError("Project", project_id)
+
+    check_project_access(db_project, user_id, AccessType.WRITE, raise_exception=True)
+
+    # Parse FASTA file
+    try:
+        fasta_sequences = parse_fasta(fasta_content)
+    except ValidationError as e:
+        raise ValidationError(f"FASTA parsing error: {e}")
+
+    # Validate and create sequences
+    created_sequences = []
+
+    for fasta_seq in fasta_sequences:
+        # Validate sequence and determine type
+        try:
+            detected_type = validate_fasta_sequence(fasta_seq, sequence_type)
+        except ValidationError as e:
+            raise ValidationError(f"Sequence '{fasta_seq.header}': {e}")
+
+        # Create sequence in database
+        db_sequence = Sequence(
+            name=fasta_seq.header,
+            sequence_data=fasta_seq.sequence_data,
+            sequence_type=detected_type,
+            description=fasta_seq.description,
+            project_id=project_id,
+            user_id=user_id,
+        )
+        db_session.add(db_sequence)
+        await db_session.flush()
+
+        created_sequences.append(SequenceOutput.model_validate(db_sequence))
+
+    return FastaUploadOutput(
+        sequences_created=len(created_sequences), sequences=created_sequences
+    )

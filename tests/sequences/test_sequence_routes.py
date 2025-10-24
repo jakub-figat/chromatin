@@ -245,3 +245,201 @@ async def test_delete_nonexistent_sequence(client: AsyncClient, auth_headers):
     response = await client.delete("/api/sequences/99999", headers=auth_headers)
 
     assert response.status_code == 404
+
+
+# FASTA upload tests
+
+
+async def test_upload_fasta_single_sequence(client: AsyncClient, auth_headers):
+    """Test uploading FASTA file with single sequence"""
+    # Create project
+    project_response = await client.post(
+        "/api/projects/", headers=auth_headers, json={"name": "FASTA Project"}
+    )
+    project_id = project_response.json()["id"]
+
+    # Create FASTA file content
+    fasta_content = ">test_seq Test DNA sequence\nACGTACGT"
+
+    # Upload FASTA
+    response = await client.post(
+        "/api/sequences/upload/fasta",
+        headers=auth_headers,
+        files={"file": ("test.fasta", fasta_content, "text/plain")},
+        data={"project_id": project_id, "sequence_type": "DNA"},
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["sequences_created"] == 1
+    assert len(data["sequences"]) == 1
+    assert data["sequences"][0]["name"] == "test_seq"
+    assert data["sequences"][0]["sequence_data"] == "ACGTACGT"
+    assert data["sequences"][0]["sequence_type"] == "DNA"
+    assert data["sequences"][0]["description"] == "Test DNA sequence"
+
+
+async def test_upload_fasta_multiple_sequences(client: AsyncClient, auth_headers):
+    """Test uploading FASTA file with multiple sequences"""
+    # Create project
+    project_response = await client.post(
+        "/api/projects/", headers=auth_headers, json={"name": "Multi FASTA Project"}
+    )
+    project_id = project_response.json()["id"]
+
+    # Create FASTA file with 3 sequences
+    fasta_content = """
+>seq1 First sequence
+ACGT
+TGCA
+>seq2 Second sequence
+GGGGCCCC
+>seq3
+ATATATATAT
+    """.strip()
+
+    # Upload FASTA
+    response = await client.post(
+        "/api/sequences/upload/fasta",
+        headers=auth_headers,
+        files={"file": ("multi.fasta", fasta_content, "text/plain")},
+        data={"project_id": project_id, "sequence_type": "DNA"},
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["sequences_created"] == 3
+    assert len(data["sequences"]) == 3
+    assert data["sequences"][0]["name"] == "seq1"
+    assert data["sequences"][0]["sequence_data"] == "ACGTTGCA"
+    assert data["sequences"][1]["name"] == "seq2"
+    assert data["sequences"][1]["sequence_data"] == "GGGGCCCC"
+    assert data["sequences"][2]["name"] == "seq3"
+    assert data["sequences"][2]["description"] is None
+
+
+async def test_upload_fasta_auto_detect_type(client: AsyncClient, auth_headers):
+    """Test uploading FASTA with auto-detection of sequence type"""
+    # Create project
+    project_response = await client.post(
+        "/api/projects/", headers=auth_headers, json={"name": "Auto Detect Project"}
+    )
+    project_id = project_response.json()["id"]
+
+    # Create FASTA with protein sequence (auto-detect should identify it)
+    fasta_content = ">protein_seq Test protein\nMKLLIVLLVAL"
+
+    # Upload without specifying sequence_type
+    response = await client.post(
+        "/api/sequences/upload/fasta",
+        headers=auth_headers,
+        files={"file": ("protein.fasta", fasta_content, "text/plain")},
+        data={"project_id": project_id},
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["sequences_created"] == 1
+    assert data["sequences"][0]["sequence_type"] == "PROTEIN"
+
+
+async def test_upload_fasta_unauthorized(client: AsyncClient):
+    """Test uploading FASTA without authentication fails"""
+    fasta_content = ">seq1\nACGT"
+
+    response = await client.post(
+        "/api/sequences/upload/fasta",
+        files={"file": ("test.fasta", fasta_content, "text/plain")},
+        data={"project_id": 1},
+    )
+
+    assert response.status_code == 401
+
+
+async def test_upload_fasta_nonexistent_project(client: AsyncClient, auth_headers):
+    """Test uploading FASTA to non-existent project fails"""
+    fasta_content = ">seq1\nACGT"
+
+    response = await client.post(
+        "/api/sequences/upload/fasta",
+        headers=auth_headers,
+        files={"file": ("test.fasta", fasta_content, "text/plain")},
+        data={"project_id": 99999, "sequence_type": "DNA"},
+    )
+
+    assert response.status_code == 404
+
+
+async def test_upload_fasta_private_project_permission_denied(
+    client: AsyncClient, auth_headers, superuser_headers
+):
+    """Test uploading FASTA to another user's private project fails"""
+    # Create private project as test_user
+    project_response = await client.post(
+        "/api/projects/",
+        headers=auth_headers,
+        json={"name": "Private Project", "is_public": False},
+    )
+    project_id = project_response.json()["id"]
+
+    fasta_content = ">seq1\nACGT"
+
+    # Try to upload as superuser
+    response = await client.post(
+        "/api/sequences/upload/fasta",
+        headers=superuser_headers,
+        files={"file": ("test.fasta", fasta_content, "text/plain")},
+        data={"project_id": project_id, "sequence_type": "DNA"},
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "fasta_content,error_pattern",
+    [
+        ("", "FASTA file is empty"),
+        ("ACGT", "Sequence data found before header"),
+        (">seq1", "has no sequence data"),
+        (">seq1\nACGTXYZ", "invalid characters"),  # Invalid DNA characters
+    ],
+)
+async def test_upload_fasta_invalid_format(
+    client: AsyncClient, auth_headers, fasta_content, error_pattern
+):
+    """Test uploading FASTA with invalid format fails"""
+    # Create project
+    project_response = await client.post(
+        "/api/projects/", headers=auth_headers, json={"name": "Test Project"}
+    )
+    project_id = project_response.json()["id"]
+
+    response = await client.post(
+        "/api/sequences/upload/fasta",
+        headers=auth_headers,
+        files={"file": ("invalid.fasta", fasta_content, "text/plain")},
+        data={"project_id": project_id, "sequence_type": "DNA"},
+    )
+
+    assert response.status_code == 400
+
+
+async def test_upload_fasta_type_mismatch(client: AsyncClient, auth_headers):
+    """Test uploading FASTA with sequence type mismatch fails"""
+    # Create project
+    project_response = await client.post(
+        "/api/projects/", headers=auth_headers, json={"name": "Test Project"}
+    )
+    project_id = project_response.json()["id"]
+
+    # Create DNA sequence but specify RNA type
+    fasta_content = ">seq1\nACGT"
+
+    response = await client.post(
+        "/api/sequences/upload/fasta",
+        headers=auth_headers,
+        files={"file": ("test.fasta", fasta_content, "text/plain")},
+        data={"project_id": project_id, "sequence_type": "RNA"},
+    )
+
+    assert response.status_code == 400

@@ -29,3 +29,15 @@ class SequenceOutput(BaseModel):
     molecular_weight: float
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class FastaUploadInput(BaseModel):
+    project_id: int
+    sequence_type: SequenceType | None = Field(
+        None, description="Sequence type. If not provided, will auto-detect."
+    )
+
+
+class FastaUploadOutput(BaseModel):
+    sequences_created: int
+    sequences: list[SequenceOutput]
