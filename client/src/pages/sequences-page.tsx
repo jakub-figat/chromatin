@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Plus, Edit, Trash2, Filter } from 'lucide-react';
+import { Plus, Edit, Trash2, Filter, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Navbar } from '@/components/navbar';
 import { SequenceFormDialog } from '@/components/sequence-form-dialog';
+import { FastaUploadDialog } from '@/components/fasta-upload-dialog';
 import { useSequences, useDeleteSequence } from '@/hooks/use-sequences';
 import { useProjects } from '@/hooks/use-projects';
 import {
@@ -17,6 +18,7 @@ import type { Sequence } from '@/types/sequence';
 
 export function SequencesPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const [editingSequence, setEditingSequence] = useState<Sequence | undefined>();
   const [filterProjectId, setFilterProjectId] = useState<number | undefined>();
 
@@ -91,10 +93,19 @@ export function SequencesPage() {
             Manage your biological sequences
           </p>
         </div>
-        <Button onClick={() => setIsCreateDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Sequence
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setIsUploadDialogOpen(true)}
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            Upload FASTA
+          </Button>
+          <Button onClick={() => setIsCreateDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            New Sequence
+          </Button>
+        </div>
       </div>
 
       {/* Filter by project */}
@@ -219,6 +230,12 @@ export function SequencesPage() {
       <SequenceFormDialog
         open={isCreateDialogOpen}
         onOpenChange={setIsCreateDialogOpen}
+        defaultProjectId={filterProjectId}
+      />
+
+      <FastaUploadDialog
+        open={isUploadDialogOpen}
+        onOpenChange={setIsUploadDialogOpen}
         defaultProjectId={filterProjectId}
       />
 

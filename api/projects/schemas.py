@@ -1,3 +1,4 @@
+from datetime import datetime
 from pydantic import Field
 
 from core.schemas import CamelCaseModel
@@ -15,6 +16,8 @@ class ProjectOutput(CamelCaseModel):
     name: str
     description: str | None = None
     is_public: bool = False
+    created_at: datetime
+    updated_at: datetime
 
 
 class ProjectWithOwner(ProjectOutput):

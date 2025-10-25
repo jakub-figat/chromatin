@@ -48,6 +48,7 @@ async def create_sequence(
     db_sequence = Sequence(**sequence_input.model_dump(), user_id=user_id)
     db_session.add(db_sequence)
     await db_session.flush()
+    await db_session.refresh(db_sequence)
 
     return SequenceOutput.model_validate(db_sequence)
 
@@ -141,6 +142,7 @@ async def update_sequence(
     db_sequence.project_id = sequence_input.project_id
 
     await db_session.flush()
+    await db_session.refresh(db_sequence)
 
     return SequenceOutput.model_validate(db_sequence)
 
@@ -207,8 +209,8 @@ async def upload_fasta(
     except ValidationError as e:
         raise ValidationError(f"FASTA parsing error: {e}")
 
-    # Validate and create sequences
-    created_sequences = []
+    # Validate all sequences first
+    db_sequences = []
 
     for fasta_seq in fasta_sequences:
         # Validate sequence and determine type
@@ -217,7 +219,7 @@ async def upload_fasta(
         except ValidationError as e:
             raise ValidationError(f"Sequence '{fasta_seq.header}': {e}")
 
-        # Create sequence in database
+        # Create sequence object
         db_sequence = Sequence(
             name=fasta_seq.header,
             sequence_data=fasta_seq.sequence_data,
@@ -227,9 +229,21 @@ async def upload_fasta(
             user_id=user_id,
         )
         db_session.add(db_sequence)
-        await db_session.flush()
+        db_sequences.append(db_sequence)
 
-        created_sequences.append(SequenceOutput.model_validate(db_sequence))
+    # Batch insert all sequences with a single flush
+    await db_session.flush()
+
+    # Reload all sequences in a single query to get database-generated fields
+    sequence_ids = [seq.id for seq in db_sequences]
+    stmt = select(Sequence).where(Sequence.id.in_(sequence_ids))
+    reloaded_sequences = await db_session.scalars(stmt)
+    reloaded_sequences_list = list(reloaded_sequences)
+
+    # Convert to output schema
+    created_sequences = [
+        SequenceOutput.model_validate(seq) for seq in reloaded_sequences_list
+    ]
 
     return FastaUploadOutput(
         sequences_created=len(created_sequences), sequences=created_sequences

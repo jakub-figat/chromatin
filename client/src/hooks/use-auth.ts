@@ -1,5 +1,6 @@
 import { useMutation } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
 import { api } from '@/lib/api-client'
 import { useAuthStore } from '@/stores/auth-store'
 import type { LoginRequest, RegisterRequest, AuthResponse, User } from '@/types/auth'
@@ -37,7 +38,11 @@ export function useLogin() {
         },
       })
       setAuth(user, authResponse.accessToken)
+      toast.success('Successfully logged in!')
       navigate('/')
+    },
+    onError: (error) => {
+      toast.error('Login failed. Please check your credentials.')
     },
   })
 }
@@ -49,7 +54,12 @@ export function useRegister() {
     mutationFn: (data: RegisterRequest) =>
       api.post<User>('/auth/register', data),
     onSuccess: () => {
+      toast.success('Account created successfully! Please log in.')
       navigate('/login')
+    },
+    onError: (error: any) => {
+      const message = error?.message || 'Registration failed. Please try again.'
+      toast.error(message)
     },
   })
 }
@@ -58,8 +68,15 @@ export function useLogout() {
   const navigate = useNavigate()
   const clearAuth = useAuthStore((state) => state.clearAuth)
 
-  return () => {
-    clearAuth()
-    navigate('/login')
-  }
+  return useMutation({
+    mutationFn: async () => {
+      // No backend call needed, just clear local state
+      return Promise.resolve()
+    },
+    onSuccess: () => {
+      clearAuth()
+      toast.success('Successfully logged out')
+      navigate('/login')
+    },
+  })
 }

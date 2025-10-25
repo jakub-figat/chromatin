@@ -1,3 +1,4 @@
+from datetime import datetime
 from pydantic import Field
 
 from core.schemas import CamelCaseModel
@@ -11,7 +12,7 @@ class SequenceInput(CamelCaseModel):
     sequence_type: SequenceType
     project_id: int
 
-    description: str | None = Field(None, min_length=1, max_length=255)
+    description: str | None = Field(None, max_length=255)
 
 
 class SequenceOutput(CamelCaseModel):
@@ -28,6 +29,9 @@ class SequenceOutput(CamelCaseModel):
     length: int
     gc_content: float
     molecular_weight: float
+
+    created_at: datetime
+    updated_at: datetime
 
 
 class FastaUploadInput(CamelCaseModel):

@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/select';
 import { useCreateSequence, useUpdateSequence } from '@/hooks/use-sequences';
 import { useProjects } from '@/hooks/use-projects';
+import { isValidSequence, getSequenceValidationError, getAllowedChars } from '@/lib/sequence-validation';
 import type { Sequence } from '@/types/sequence';
 
 const sequenceSchema = z.object({
@@ -29,10 +30,16 @@ const sequenceSchema = z.object({
     required_error: 'Sequence type is required',
   }),
   description: z.string().max(255, 'Description too long').optional(),
-  projectId: z.number({
-    required_error: 'Project is required',
-    invalid_type_error: 'Project is required',
-  }),
+  projectId: z.number("Project is required"),
+}).superRefine((data, ctx) => {
+  if (!isValidSequence(data.sequenceData, data.sequenceType)) {
+    ctx.addIssue({
+      code: "custom", 
+      message: getSequenceValidationError(data.sequenceType),
+      path: ["sequenceData"],
+    });
+  }
+
 });
 
 type SequenceFormData = z.infer<typeof sequenceSchema>;
@@ -159,6 +166,11 @@ export function SequenceFormDialog({
             {errors.sequenceData && (
               <p className="text-sm text-red-500">
                 {errors.sequenceData.message}
+              </p>
+            )}
+            {!errors.sequenceData && (
+              <p className="text-xs text-muted-foreground">
+                Allowed characters: {getAllowedChars(sequenceType)}
               </p>
             )}
           </div>

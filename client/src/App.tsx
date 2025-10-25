@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { Toaster } from 'sonner'
 import { QueryProvider } from '@/lib/query-provider'
 import { ProtectedRoute } from '@/components/protected-route'
 import { LoginPage } from '@/pages/login-page'
@@ -10,6 +11,7 @@ import { SequencesPage } from '@/pages/sequences-page'
 function App() {
   return (
     <QueryProvider>
+      <Toaster position="top-right" richColors />
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />

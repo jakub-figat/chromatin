@@ -62,7 +62,11 @@ async def test_list_sequences(client: AsyncClient, auth_headers):
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 3
-    assert all(seq["userId"] == response.headers.get("x-user-id") for seq in data if "x-user-id" in response.headers)
+    assert all(
+        seq["userId"] == response.headers.get("x-user-id")
+        for seq in data
+        if "x-user-id" in response.headers
+    )
 
 
 async def test_list_sequences_filtered_by_project(client: AsyncClient, auth_headers):

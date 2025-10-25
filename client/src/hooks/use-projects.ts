@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { api } from '@/lib/api-client';
 import type { Project } from '@/types/project';
 
@@ -50,6 +51,11 @@ export function useCreateProject() {
     onSuccess: () => {
       // Invalidate projects list to refetch
       queryClient.invalidateQueries({ queryKey: ['projects'] });
+      toast.success('Project created successfully!');
+    },
+    onError: (error: any) => {
+      const message = error?.message || 'Failed to create project';
+      toast.error(message);
     },
   });
 }
@@ -76,6 +82,11 @@ export function useUpdateProject() {
       // Invalidate both the projects list and the specific project
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       queryClient.invalidateQueries({ queryKey: ['projects', variables.id] });
+      toast.success('Project updated successfully!');
+    },
+    onError: (error: any) => {
+      const message = error?.message || 'Failed to update project';
+      toast.error(message);
     },
   });
 }
@@ -91,6 +102,11 @@ export function useDeleteProject() {
     onSuccess: () => {
       // Invalidate projects list to refetch
       queryClient.invalidateQueries({ queryKey: ['projects'] });
+      toast.success('Project deleted successfully!');
+    },
+    onError: (error: any) => {
+      const message = error?.message || 'Failed to delete project';
+      toast.error(message);
     },
   });
 }

@@ -42,6 +42,7 @@ async def create_project(
 
     db.add(db_project)
     await db.flush()
+    await db.refresh(db_project)
 
     return schemas.ProjectOutput.model_validate(db_project)
 
@@ -92,6 +93,7 @@ async def update_project(
     db_project.is_public = project_input.is_public
 
     await db.flush()
+    await db.refresh(db_project)
 
     return schemas.ProjectOutput.model_validate(db_project)
 

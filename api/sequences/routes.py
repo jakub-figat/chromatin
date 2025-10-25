@@ -83,12 +83,13 @@ async def delete_sequence_endpoint(
     status_code=status.HTTP_201_CREATED,
 )
 async def upload_fasta_file(
+    current_user: User = Depends(get_current_user),
     file: UploadFile = File(...),
     project_id: int = Form(...),
     sequence_type: SequenceType | None = Form(None),
-    current_user: User = Depends(get_current_user),
     db_session: AsyncSession = Depends(get_db),
 ):
+    print("AAAAAAA")
     """
     Upload a FASTA file and create sequences in a project.
 

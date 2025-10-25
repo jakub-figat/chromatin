@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { api } from '@/lib/api-client';
+import { useAuthStore } from '@/stores/auth-store'
 import type { Sequence, SequenceInput, FastaUploadOutput } from '@/types/sequence';
 
 // Fetch all sequences for the current user, optionally filtered by project
@@ -44,6 +46,11 @@ export function useCreateSequence() {
     onSuccess: () => {
       // Invalidate sequences list to refetch
       queryClient.invalidateQueries({ queryKey: ['sequences'] });
+      toast.success('Sequence created successfully!');
+    },
+    onError: (error: any) => {
+      const message = error?.message || 'Failed to create sequence';
+      toast.error(message);
     },
   });
 }
@@ -70,6 +77,11 @@ export function useUpdateSequence() {
       // Invalidate both the sequences list and the specific sequence
       queryClient.invalidateQueries({ queryKey: ['sequences'] });
       queryClient.invalidateQueries({ queryKey: ['sequences', variables.id] });
+      toast.success('Sequence updated successfully!');
+    },
+    onError: (error: any) => {
+      const message = error?.message || 'Failed to update sequence';
+      toast.error(message);
     },
   });
 }
@@ -85,6 +97,11 @@ export function useDeleteSequence() {
     onSuccess: () => {
       // Invalidate sequences list to refetch
       queryClient.invalidateQueries({ queryKey: ['sequences'] });
+      toast.success('Sequence deleted successfully!');
+    },
+    onError: (error: any) => {
+      const message = error?.message || 'Failed to delete sequence';
+      toast.error(message);
     },
   });
 }
@@ -111,7 +128,7 @@ export function useUploadFasta() {
       }
 
       // Use fetch directly for file upload since we need FormData
-      const token = localStorage.getItem('token');
+      const { token } = useAuthStore.getState()
       const response = await fetch('/api/sequences/upload/fasta', {
         method: 'POST',
         headers: {
@@ -127,9 +144,14 @@ export function useUploadFasta() {
 
       return response.json() as Promise<FastaUploadOutput>;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       // Invalidate sequences list to refetch
       queryClient.invalidateQueries({ queryKey: ['sequences'] });
+      toast.success(`Successfully uploaded ${data.sequencesCreated} sequence(s)!`);
+    },
+    onError: (error: any) => {
+      const message = error?.message || 'Failed to upload FASTA file';
+      toast.error(message);
     },
   });
 }

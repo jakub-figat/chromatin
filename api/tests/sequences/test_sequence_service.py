@@ -13,7 +13,6 @@ from sequences.service import (
     create_sequence,
     get_sequence,
     list_user_sequences,
-    list_project_sequences,
     update_sequence,
     delete_sequence,
     check_sequence_is_valid,
@@ -32,18 +31,20 @@ async def test_create_sequence(
     )
 
     sequence = await create_sequence(sequence_input, test_user.id, test_session)
-    assert sequence.model_dump() == {
-        "id": sequence.id,
-        "description": "test",
-        "gc_content": 0.5,
-        "length": 8,
-        "molecular_weight": 0.0,
-        "name": "test_sequence",
-        "project_id": test_project.id,
-        "sequence_data": "ATGCATGC",
-        "sequence_type": SequenceType.DNA,
-        "user_id": test_user.id,
-    }
+
+    # Verify all fields (excluding timestamps which are auto-generated)
+    assert sequence.id is not None
+    assert sequence.name == "test_sequence"
+    assert sequence.description == "test"
+    assert sequence.sequence_data == "ATGCATGC"
+    assert sequence.sequence_type == SequenceType.DNA
+    assert sequence.project_id == test_project.id
+    assert sequence.user_id == test_user.id
+    assert sequence.length == 8
+    assert sequence.gc_content == 0.5
+    assert sequence.molecular_weight == 0.0
+    assert sequence.created_at is not None
+    assert sequence.updated_at is not None
 
 
 async def test_create_sequence_invalid_dna(
@@ -242,8 +243,8 @@ async def test_list_project_sequences(
         )
         await create_sequence(sequence_input, test_user.id, test_session)
 
-    sequences = await list_project_sequences(
-        test_project.id, test_user.id, test_session
+    sequences = await list_user_sequences(
+        test_user.id, test_session, project_id=test_project.id
     )
     assert len(sequences) == 3
 
@@ -265,28 +266,58 @@ async def test_list_project_sequences_as_other_user_public_project(
         )
         await create_sequence(sequence_input, test_user.id, test_session)
 
-    # List as other user
-    sequences = await list_project_sequences(project.id, test_user_2.id, test_session)
-    assert len(sequences) == 2
+    # List as other user - now filters by user_id, so won't see other user's sequences
+    sequences = await list_user_sequences(
+        test_user_2.id, test_session, project_id=project.id
+    )
+    assert len(sequences) == 0  # Other user has no sequences in this project
 
 
-async def test_list_project_sequences_as_other_user_private_project(
-    test_session: AsyncSession, test_user: User, test_user_2: User
-):
-    # Create private project
-    project_in = ProjectInput(name="Private Project", is_public=False)
-    project = await create_project(test_session, test_user.id, project_in)
-
-    # Try to list as other user
-    with pytest.raises(NotFoundError):
-        await list_project_sequences(project.id, test_user_2.id, test_session)
-
-
-async def test_list_project_sequences_nonexistent_project(
+async def test_list_project_sequences_filter_by_project_id(
     test_session: AsyncSession, test_user: User
 ):
-    with pytest.raises(NotFoundError):
-        await list_project_sequences(99999, test_user.id, test_session)
+    # Create two projects
+    project_in1 = ProjectInput(name="Project 1")
+    project1 = await create_project(test_session, test_user.id, project_in1)
+
+    project_in2 = ProjectInput(name="Project 2")
+    project2 = await create_project(test_session, test_user.id, project_in2)
+
+    # Create sequences in project 1
+    for i in range(2):
+        sequence_input = SequenceInput(
+            name=f"proj1_seq_{i}",
+            sequence_type=SequenceType.DNA,
+            sequence_data="ATGC",
+            project_id=project1.id,
+        )
+        await create_sequence(sequence_input, test_user.id, test_session)
+
+    # Create sequences in project 2
+    for i in range(3):
+        sequence_input = SequenceInput(
+            name=f"proj2_seq_{i}",
+            sequence_type=SequenceType.DNA,
+            sequence_data="ATGC",
+            project_id=project2.id,
+        )
+        await create_sequence(sequence_input, test_user.id, test_session)
+
+    # Filter by project 1
+    sequences1 = await list_user_sequences(
+        test_user.id, test_session, project_id=project1.id
+    )
+    assert len(sequences1) == 2
+
+    # Filter by project 2
+    sequences2 = await list_user_sequences(
+        test_user.id, test_session, project_id=project2.id
+    )
+    assert len(sequences2) == 3
+
+    # No filter - should get all
+    all_sequences = await list_user_sequences(test_user.id, test_session)
+    assert len(all_sequences) == 5
 
 
 async def test_update_sequence_as_owner(
