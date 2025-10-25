@@ -97,7 +97,7 @@ async def test_login_wrong_password(client: AsyncClient, test_user):
     )
 
     assert response.status_code == 401
-    assert "Incorrect email or password" in response.json()["detail"]
+    assert "Incorrect username/email or password" in response.json()["detail"]
 
 
 async def test_login_nonexistent_user(client: AsyncClient):

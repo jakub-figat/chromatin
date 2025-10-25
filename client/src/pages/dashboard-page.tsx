@@ -1,28 +1,13 @@
 import { useAuthStore } from '@/stores/auth-store'
 import { Link } from 'react-router-dom'
+import { Navbar } from '@/components/navbar'
 
 export function DashboardPage() {
   const user = useAuthStore((state) => state.user)
-  const clearAuth = useAuthStore((state) => state.clearAuth)
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b">
-        <div className="container mx-auto flex h-16 items-center justify-between px-4">
-          <h1 className="text-2xl font-bold">Chromatin</h1>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-muted-foreground">
-              {user?.username}
-            </span>
-            <button
-              onClick={() => clearAuth()}
-              className="text-sm text-muted-foreground hover:text-foreground"
-            >
-              Sign out
-            </button>
-          </div>
-        </div>
-      </header>
+    <>
+      <Navbar />
       <main className="container mx-auto px-4 py-8">
         <div className="space-y-6">
           <div>
@@ -53,6 +38,6 @@ export function DashboardPage() {
           </div>
         </div>
       </main>
-    </div>
+    </>
   )
 }

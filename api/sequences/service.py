@@ -73,46 +73,20 @@ async def get_sequence(
 
 
 async def list_user_sequences(
-    user_id: int, db_session: AsyncSession, skip: int = 0, limit: int = 100
-) -> list[SequenceOutput]:
-    """List all sequences owned by a user"""
-    stmt = (
-        select(Sequence)
-        .where(Sequence.user_id == user_id)
-        .order_by(Sequence.created_at.desc())
-        .offset(skip)
-        .limit(limit)
-    )
-
-    results = await db_session.scalars(stmt)
-    return [SequenceOutput.model_validate(sequence) for sequence in results]
-
-
-async def list_project_sequences(
-    project_id: int,
     user_id: int,
     db_session: AsyncSession,
     skip: int = 0,
     limit: int = 100,
+    project_id: int | None = None,
 ) -> list[SequenceOutput]:
-    """List all sequences in a project (if user has access)"""
-    # First check if user has access to the project
-    stmt = select(Project).where(Project.id == project_id)
-    db_project = await db_session.scalar(stmt)
+    """List all sequences owned by a user, optionally filtered by project"""
+    stmt = select(Sequence).where(Sequence.user_id == user_id)
 
-    if not db_project:
-        raise NotFoundError("Project", project_id)
+    # Filter by project if provided
+    if project_id is not None:
+        stmt = stmt.where(Sequence.project_id == project_id)
 
-    check_project_access(db_project, user_id, AccessType.READ, raise_exception=True)
-
-    # Get sequences
-    stmt = (
-        select(Sequence)
-        .where(Sequence.project_id == project_id)
-        .order_by(Sequence.created_at.desc())
-        .offset(skip)
-        .limit(limit)
-    )
+    stmt = stmt.order_by(Sequence.created_at.desc()).offset(skip).limit(limit)
 
     results = await db_session.scalars(stmt)
     return [SequenceOutput.model_validate(sequence) for sequence in results]

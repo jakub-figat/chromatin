@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/card'
 
 const loginSchema = z.object({
-  username: z.string().min(1, 'Username is required'),
+  username: z.string().min(1, 'Email or username is required'),
   password: z.string().min(1, 'Password is required'),
 })
 
@@ -49,10 +49,10 @@ export function LoginPage() {
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="username">Email or Username</Label>
               <Input
                 id="username"
-                placeholder="Enter your username"
+                placeholder="Enter your email or username"
                 {...register('username')}
               />
               {errors.username && (
@@ -77,7 +77,7 @@ export function LoginPage() {
             </div>
             {login.isError && (
               <p className="text-sm text-destructive text-center">
-                Invalid username or password
+                Invalid email/username or password
               </p>
             )}
             <Button

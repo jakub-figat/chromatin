@@ -35,8 +35,13 @@ async def create_user(
     return schemas.UserResponse.model_validate(db_user)
 
 
-async def authenticate_user(db: AsyncSession, email: str, password: str) -> User | None:
-    stmt = select(User).where(User.email == email)
+async def authenticate_user(
+    db: AsyncSession, email_or_username: str, password: str
+) -> User | None:
+    """Authenticate a user by email or username and password"""
+    stmt = select(User).where(
+        (User.email == email_or_username) | (User.username == email_or_username)
+    )
     user = await db.scalar(stmt)
 
     if not user:

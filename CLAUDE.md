@@ -4,7 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Chromatin is a FastAPI-based bioinformatics application for managing biological sequences (DNA, RNA, protein) and organizing them into projects. It uses SQLAlchemy with async PostgreSQL for data persistence and includes JWT-based authentication.
+Chromatin is a fullstack bioinformatics application for managing biological sequences (DNA, RNA, protein) and organizing them into projects. The backend is built with FastAPI and uses SQLAlchemy with async PostgreSQL for data persistence. The frontend is built with React, TypeScript, and Tailwind CSS. The application includes JWT-based authentication and a modern, responsive UI.
+
+## Repository Structure
+
+The project is split into two main directories:
+
+- **`api/`** - FastAPI backend application
+  - All backend code, tests, and configuration
+  - Run commands from this directory with `uv run`
+
+- **`client/`** - React frontend application
+  - All frontend code and assets
+  - Run commands from this directory with `npm`
 
 ## Development Commands
 
@@ -81,7 +93,75 @@ docker-compose down
 docker-compose logs -f
 ```
 
+### Frontend Development
+
+The frontend uses npm for package management. Run these commands from the `client/` directory:
+
+```bash
+# Install dependencies
+npm install
+
+# Run development server (http://localhost:5173)
+npm run dev
+
+# Build for production
+npm run build
+
+# Preview production build
+npm run preview
+
+# Lint code
+npm run lint
+```
+
+The Vite dev server proxies `/api` requests to `http://localhost:8000` (FastAPI backend).
+
+## API Conventions
+
+### CamelCase JSON Responses
+
+The API uses **snake_case** in Python code but returns **camelCase** in JSON responses:
+
+- **Backend (Python)**: `user_id`, `is_public`, `created_at`, `sequence_data`
+- **Frontend (JSON)**: `userId`, `isPublic`, `createdAt`, `sequenceData`
+
+This is achieved using a `CamelCaseModel` base class in `core/schemas.py`:
+
+```python
+class CamelCaseModel(BaseModel):
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,  # Accept both snake_case and camelCase in requests
+        from_attributes=True,
+    )
+```
+
+All Pydantic schemas inherit from `CamelCaseModel` instead of `BaseModel`.
+
+### OAuth2 Login Endpoint
+
+The `/api/auth/login` endpoint uses `OAuth2PasswordRequestForm`, which requires:
+- **Content-Type**: `application/x-www-form-urlencoded` (NOT JSON)
+- **Fields**: `username` and `password` (form fields, not JSON)
+
+The `username` field accepts either email or username for flexible authentication.
+
+**Frontend example**:
+```typescript
+const formData = new URLSearchParams()
+formData.append('username', data.username)
+formData.append('password', data.password)
+
+await fetch('/api/auth/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  body: formData,
+})
+```
+
 ## Architecture
+
+### Backend Architecture
 
 ### Module Structure
 The codebase follows a feature-based modular architecture:
@@ -140,6 +220,43 @@ The codebase follows a feature-based modular architecture:
 - **Password hashing** with Argon2 via `argon2-cffi`
 - **`get_current_user()`** dependency extracts and validates JWT tokens from Authorization header
 - Services perform **ownership checks** - users can only access/modify their own resources (unless superuser)
+- **Flexible login**: Users can authenticate with either email or username
+
+### Frontend Architecture
+
+**Tech Stack**:
+- **React 18** with TypeScript
+- **Vite** for build tooling and dev server
+- **Tailwind CSS v3** for styling
+- **Shadcn/ui** for UI components (Radix UI primitives)
+- **TanStack Query (React Query)** for server state management
+- **Zustand** for client state (auth state with localStorage persistence)
+- **React Router v6** for routing
+- **React Hook Form + Zod** for form validation
+
+**Directory Structure** (`client/src/`):
+- **`components/`** - Reusable React components
+  - `ui/` - Shadcn/ui components (Button, Input, Card, Dialog, etc.)
+  - Feature-specific components (e.g., `project-form-dialog.tsx`)
+- **`pages/`** - Route pages (LoginPage, ProjectsPage, etc.)
+- **`hooks/`** - Custom React hooks
+  - `use-auth.ts` - Authentication hooks (useLogin, useRegister, useLogout)
+  - `use-projects.ts` - Project CRUD hooks using TanStack Query
+- **`stores/`** - Zustand stores
+  - `auth-store.ts` - Authentication state with localStorage persistence
+- **`lib/`** - Utilities and configuration
+  - `api-client.ts` - API request wrapper with automatic JWT injection
+  - `query-provider.tsx` - TanStack Query setup
+  - `utils.ts` - Utility functions (e.g., `cn()` for class merging)
+- **`types/`** - TypeScript type definitions (auth, projects, sequences)
+
+**Key Features**:
+- **Type-safe API client**: All API calls are typed with TypeScript
+- **Automatic auth injection**: API client automatically adds JWT token to requests
+- **Query caching**: TanStack Query caches server data and handles refetching
+- **Protected routes**: `ProtectedRoute` component redirects unauthenticated users
+- **Form validation**: Zod schemas validate forms before submission
+- **Responsive design**: Tailwind utilities for mobile-first responsive layouts
 
 ## Key Patterns
 

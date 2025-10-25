@@ -35,6 +35,130 @@ async def test_create_sequence(client: AsyncClient, auth_headers):
     assert "id" in data
 
 
+async def test_list_sequences(client: AsyncClient, auth_headers):
+    """Test listing all user sequences"""
+    # Create project
+    project_response = await client.post(
+        "/api/projects/", headers=auth_headers, json={"name": "Test Project"}
+    )
+    project_id = project_response.json()["id"]
+
+    # Create multiple sequences
+    for i in range(3):
+        await client.post(
+            "/api/sequences/",
+            headers=auth_headers,
+            json={
+                "name": f"seq_{i}",
+                "sequence_type": "DNA",
+                "sequence_data": "ATGC",
+                "project_id": project_id,
+            },
+        )
+
+    # List all sequences
+    response = await client.get("/api/sequences/", headers=auth_headers)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 3
+    assert all(seq["userId"] == response.headers.get("x-user-id") for seq in data if "x-user-id" in response.headers)
+
+
+async def test_list_sequences_filtered_by_project(client: AsyncClient, auth_headers):
+    """Test listing sequences filtered by project_id"""
+    # Create two projects
+    project1_response = await client.post(
+        "/api/projects/", headers=auth_headers, json={"name": "Project 1"}
+    )
+    project1_id = project1_response.json()["id"]
+
+    project2_response = await client.post(
+        "/api/projects/", headers=auth_headers, json={"name": "Project 2"}
+    )
+    project2_id = project2_response.json()["id"]
+
+    # Create sequences in project 1
+    for i in range(2):
+        await client.post(
+            "/api/sequences/",
+            headers=auth_headers,
+            json={
+                "name": f"proj1_seq_{i}",
+                "sequence_type": "DNA",
+                "sequence_data": "ATGC",
+                "project_id": project1_id,
+            },
+        )
+
+    # Create sequences in project 2
+    for i in range(3):
+        await client.post(
+            "/api/sequences/",
+            headers=auth_headers,
+            json={
+                "name": f"proj2_seq_{i}",
+                "sequence_type": "DNA",
+                "sequence_data": "ATGC",
+                "project_id": project2_id,
+            },
+        )
+
+    # Filter by project 1
+    response = await client.get(
+        f"/api/sequences/?project_id={project1_id}", headers=auth_headers
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2
+    assert all(seq["projectId"] == project1_id for seq in data)
+
+    # Filter by project 2
+    response = await client.get(
+        f"/api/sequences/?project_id={project2_id}", headers=auth_headers
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 3
+    assert all(seq["projectId"] == project2_id for seq in data)
+
+
+async def test_list_sequences_pagination(client: AsyncClient, auth_headers):
+    """Test listing sequences with pagination"""
+    # Create project
+    project_response = await client.post(
+        "/api/projects/", headers=auth_headers, json={"name": "Test Project"}
+    )
+    project_id = project_response.json()["id"]
+
+    # Create 5 sequences
+    for i in range(5):
+        await client.post(
+            "/api/sequences/",
+            headers=auth_headers,
+            json={
+                "name": f"seq_{i}",
+                "sequence_type": "DNA",
+                "sequence_data": "ATGC",
+                "project_id": project_id,
+            },
+        )
+
+    # Get first 2
+    response = await client.get("/api/sequences/?limit=2", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2
+
+    # Skip first 2, get next 2
+    response = await client.get("/api/sequences/?skip=2&limit=2", headers=auth_headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2
+
+
 async def test_create_sequence_unauthorized(client: AsyncClient):
     """Test creating sequence without auth fails"""
     response = await client.post(

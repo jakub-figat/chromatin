@@ -10,8 +10,24 @@ export function useLogin() {
 
   return useMutation({
     mutationFn: async (data: LoginRequest) => {
-      const response = await api.post<AuthResponse>('/auth/login', data)
-      return response
+      // OAuth2PasswordRequestForm expects form-encoded data, not JSON
+      const formData = new URLSearchParams()
+      formData.append('username', data.username)
+      formData.append('password', data.password)
+
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formData,
+      })
+
+      if (!response.ok) {
+        throw new Error('Login failed')
+      }
+
+      return response.json() as Promise<AuthResponse>
     },
     onSuccess: async (authResponse) => {
       // Fetch user data after login

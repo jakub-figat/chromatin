@@ -9,7 +9,6 @@ from sequences.service import (
     create_sequence,
     get_sequence,
     list_user_sequences,
-    list_project_sequences,
     update_sequence,
     delete_sequence,
     upload_fasta,
@@ -32,22 +31,19 @@ async def create_new_sequence(
 async def list_sequences(
     skip: int = 0,
     limit: int = 100,
+    project_id: int | None = None,
     current_user: User = Depends(get_current_user),
     db_session: AsyncSession = Depends(get_db),
 ):
-    return await list_user_sequences(current_user.id, db_session, skip, limit)
+    """
+    List sequences for the current user.
 
-
-@router.get("/project/{project_id}", response_model=list[SequenceOutput])
-async def list_sequences_by_project(
-    project_id: int,
-    skip: int = 0,
-    limit: int = 100,
-    current_user: User = Depends(get_current_user),
-    db_session: AsyncSession = Depends(get_db),
-):
-    return await list_project_sequences(
-        project_id, current_user.id, db_session, skip, limit
+    - **skip**: Number of sequences to skip (pagination)
+    - **limit**: Maximum number of sequences to return
+    - **project_id**: Optional. Filter by project ID
+    """
+    return await list_user_sequences(
+        current_user.id, db_session, skip, limit, project_id
     )
 
 
