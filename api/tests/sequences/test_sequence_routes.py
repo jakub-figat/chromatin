@@ -393,18 +393,13 @@ async def test_upload_fasta_single_sequence(client: AsyncClient, auth_headers):
     response = await client.post(
         "/api/sequences/upload/fasta",
         headers=auth_headers,
-        files={"file": ("test.fasta", fasta_content, "text/plain")},
+        files={"files": ("test.fasta", fasta_content, "text/plain")},
         data={"project_id": project_id, "sequence_type": "DNA"},
     )
 
-    assert response.status_code == 201
+    assert response.status_code == 200
     data = response.json()
     assert data["sequencesCreated"] == 1
-    assert len(data["sequences"]) == 1
-    assert data["sequences"][0]["name"] == "test_seq"
-    assert data["sequences"][0]["sequenceData"] == "ACGTACGT"
-    assert data["sequences"][0]["sequenceType"] == "DNA"
-    assert data["sequences"][0]["description"] == "Test DNA sequence"
 
 
 async def test_upload_fasta_multiple_sequences(client: AsyncClient, auth_headers):
@@ -430,20 +425,13 @@ ATATATATAT
     response = await client.post(
         "/api/sequences/upload/fasta",
         headers=auth_headers,
-        files={"file": ("multi.fasta", fasta_content, "text/plain")},
+        files={"files": ("multi.fasta", fasta_content, "text/plain")},
         data={"project_id": project_id, "sequence_type": "DNA"},
     )
 
-    assert response.status_code == 201
+    assert response.status_code == 200
     data = response.json()
     assert data["sequencesCreated"] == 3
-    assert len(data["sequences"]) == 3
-    assert data["sequences"][0]["name"] == "seq1"
-    assert data["sequences"][0]["sequenceData"] == "ACGTTGCA"
-    assert data["sequences"][1]["name"] == "seq2"
-    assert data["sequences"][1]["sequenceData"] == "GGGGCCCC"
-    assert data["sequences"][2]["name"] == "seq3"
-    assert data["sequences"][2]["description"] is None
 
 
 async def test_upload_fasta_auto_detect_type(client: AsyncClient, auth_headers):
@@ -461,14 +449,13 @@ async def test_upload_fasta_auto_detect_type(client: AsyncClient, auth_headers):
     response = await client.post(
         "/api/sequences/upload/fasta",
         headers=auth_headers,
-        files={"file": ("protein.fasta", fasta_content, "text/plain")},
+        files={"files": ("protein.fasta", fasta_content, "text/plain")},
         data={"project_id": project_id},
     )
 
-    assert response.status_code == 201
+    assert response.status_code == 200
     data = response.json()
     assert data["sequencesCreated"] == 1
-    assert data["sequences"][0]["sequenceType"] == "PROTEIN"
 
 
 async def test_upload_fasta_unauthorized(client: AsyncClient):
@@ -477,7 +464,7 @@ async def test_upload_fasta_unauthorized(client: AsyncClient):
 
     response = await client.post(
         "/api/sequences/upload/fasta",
-        files={"file": ("test.fasta", fasta_content, "text/plain")},
+        files={"files": ("test.fasta", fasta_content, "text/plain")},
         data={"project_id": 1},
     )
 
@@ -491,7 +478,7 @@ async def test_upload_fasta_nonexistent_project(client: AsyncClient, auth_header
     response = await client.post(
         "/api/sequences/upload/fasta",
         headers=auth_headers,
-        files={"file": ("test.fasta", fasta_content, "text/plain")},
+        files={"files": ("test.fasta", fasta_content, "text/plain")},
         data={"project_id": 99999, "sequence_type": "DNA"},
     )
 
@@ -516,7 +503,7 @@ async def test_upload_fasta_private_project_permission_denied(
     response = await client.post(
         "/api/sequences/upload/fasta",
         headers=superuser_headers,
-        files={"file": ("test.fasta", fasta_content, "text/plain")},
+        files={"files": ("test.fasta", fasta_content, "text/plain")},
         data={"project_id": project_id, "sequence_type": "DNA"},
     )
 
@@ -545,7 +532,7 @@ async def test_upload_fasta_invalid_format(
     response = await client.post(
         "/api/sequences/upload/fasta",
         headers=auth_headers,
-        files={"file": ("invalid.fasta", fasta_content, "text/plain")},
+        files={"files": ("invalid.fasta", fasta_content, "text/plain")},
         data={"project_id": project_id, "sequence_type": "DNA"},
     )
 
@@ -566,8 +553,196 @@ async def test_upload_fasta_type_mismatch(client: AsyncClient, auth_headers):
     response = await client.post(
         "/api/sequences/upload/fasta",
         headers=auth_headers,
-        files={"file": ("test.fasta", fasta_content, "text/plain")},
+        files={"files": ("test.fasta", fasta_content, "text/plain")},
         data={"project_id": project_id, "sequence_type": "RNA"},
     )
 
     assert response.status_code == 400
+
+
+# Batch download tests
+
+
+async def test_batch_download_single_sequence(
+    client: AsyncClient, auth_headers, test_sequence
+):
+    """Test batch download with single sequence"""
+    response = await client.post(
+        "/api/sequences/download/batch",
+        headers=auth_headers,
+        json={"sequenceIds": [test_sequence.id]},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert "attachment" in response.headers["content-disposition"]
+
+    # Verify FASTA content
+    content = response.text
+    assert f">{test_sequence.name}" in content
+    assert test_sequence.sequence_data in content
+
+
+async def test_batch_download_multiple_sequences(
+    client: AsyncClient, auth_headers, test_project
+):
+    """Test batch download with multiple sequences"""
+    # Create multiple sequences
+    sequence_ids = []
+    sequences_data = [
+        ("seq1", "ATGC"),
+        ("seq2", "GGGGCCCC"),
+        ("seq3", "ATATATATAT"),
+    ]
+
+    for name, data in sequences_data:
+        create_response = await client.post(
+            "/api/sequences/",
+            headers=auth_headers,
+            json={
+                "name": name,
+                "sequenceType": "DNA",
+                "sequenceData": data,
+                "projectId": test_project.id,
+            },
+        )
+        sequence_ids.append(create_response.json()["id"])
+
+    # Download all sequences in batch
+    response = await client.post(
+        "/api/sequences/download/batch",
+        headers=auth_headers,
+        json={"sequenceIds": sequence_ids},
+    )
+
+    assert response.status_code == 200
+
+    # Verify all sequences are in the FASTA content
+    content = response.text
+    for name, data in sequences_data:
+        assert f">{name}" in content
+        assert data in content
+
+
+async def test_batch_download_nonexistent_sequence(client: AsyncClient, auth_headers):
+    """Test batch download with non-existent sequence ID fails"""
+    response = await client.post(
+        "/api/sequences/download/batch",
+        headers=auth_headers,
+        json={"sequenceIds": [99999, 99998]},
+    )
+
+    assert response.status_code == 404
+
+
+async def test_batch_download_mixed_existing_nonexistent(
+    client: AsyncClient, auth_headers, test_sequence
+):
+    """Test batch download with mix of existing and non-existent IDs fails"""
+    # Try to download with valid and invalid IDs
+    response = await client.post(
+        "/api/sequences/download/batch",
+        headers=auth_headers,
+        json={"sequenceIds": [test_sequence.id, 99999]},
+    )
+
+    assert response.status_code == 404
+
+
+async def test_batch_download_private_project_permission_denied(
+    client: AsyncClient, auth_headers, superuser_headers, test_project, test_user
+):
+    """Test batch download from another user's private project fails"""
+    # Create sequence in test_user's private project
+    create_response = await client.post(
+        "/api/sequences/",
+        headers=auth_headers,
+        json={
+            "name": "private_seq",
+            "sequenceType": "DNA",
+            "sequenceData": "ATGC",
+            "projectId": test_project.id,
+        },
+    )
+    sequence_id = create_response.json()["id"]
+
+    # Try to download as superuser (different user)
+    response = await client.post(
+        "/api/sequences/download/batch",
+        headers=superuser_headers,
+        json={"sequenceIds": [sequence_id]},
+    )
+
+    assert response.status_code == 404
+
+
+async def test_batch_download_public_project_succeeds(
+    client: AsyncClient, auth_headers, superuser_headers, test_user
+):
+    """Test batch download from another user's public project succeeds"""
+    # Create public project and sequence as test_user
+    project_response = await client.post(
+        "/api/projects/",
+        headers=auth_headers,
+        json={"name": "Public Project", "isPublic": True},
+    )
+    project_id = project_response.json()["id"]
+
+    create_response = await client.post(
+        "/api/sequences/",
+        headers=auth_headers,
+        json={
+            "name": "public_seq",
+            "sequenceType": "DNA",
+            "sequenceData": "ATGCATGC",
+            "projectId": project_id,
+        },
+    )
+    sequence_id = create_response.json()["id"]
+
+    # Download as superuser
+    response = await client.post(
+        "/api/sequences/download/batch",
+        headers=superuser_headers,
+        json={"sequenceIds": [sequence_id]},
+    )
+
+    assert response.status_code == 200
+    content = response.text
+    assert ">public_seq" in content
+    assert "ATGCATGC" in content
+
+
+async def test_batch_download_empty_list(client: AsyncClient, auth_headers):
+    """Test batch download with empty sequence list fails validation"""
+    response = await client.post(
+        "/api/sequences/download/batch",
+        headers=auth_headers,
+        json={"sequenceIds": []},
+    )
+
+    assert response.status_code == 422  # Validation error
+
+
+async def test_batch_download_too_many_sequences(client: AsyncClient, auth_headers):
+    """Test batch download with more than max limit fails validation"""
+    # Try to download more than 1000 sequences (the max)
+    sequence_ids = list(range(1, 1002))
+
+    response = await client.post(
+        "/api/sequences/download/batch",
+        headers=auth_headers,
+        json={"sequenceIds": sequence_ids},
+    )
+
+    assert response.status_code == 422  # Validation error
+
+
+async def test_batch_download_unauthorized(client: AsyncClient):
+    """Test batch download without authentication fails"""
+    response = await client.post(
+        "/api/sequences/download/batch",
+        json={"sequenceIds": [1, 2, 3]},
+    )
+
+    assert response.status_code == 401

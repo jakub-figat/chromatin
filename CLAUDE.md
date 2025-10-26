@@ -186,11 +186,16 @@ The codebase follows a feature-based modular architecture:
   - `schemas.py`: Project request/response schemas
 
 - **`sequences/`** - Biological sequence module
-  - `models.py`: Sequence model with `@cached_property` methods for `length`, `gc_content`, `molecular_weight`
+  - `models.py`: Sequence model with hybrid storage support (DB for small sequences, files for large ones)
   - `enums.py`: SequenceType enum (DNA, RNA, PROTEIN)
-  - `routes.py`: Sequence CRUD endpoints
-  - `service.py`: Sequence business logic
-  - `schemas.py`: Sequence request/response schemas
+  - `routes.py`: Sequence CRUD endpoints including streaming download
+  - `service.py`: Sequence business logic with storage service integration
+  - `schemas.py`: Sequence request/response schemas (`SequenceListOutput` vs `SequenceDetailOutput`)
+  - `fasta_parser.py`: FASTA file parsing utilities
+
+- **`core/storage.py`** - Storage abstraction layer
+  - Protocol-based design with `LocalStorageService` (aiofiles) and `S3StorageService` (aioboto3)
+  - Async file I/O with streaming support for memory efficiency
 
 - **`main.py`** - FastAPI application setup with CORS middleware, router registration, and global exception handlers
 
@@ -258,6 +263,68 @@ The codebase follows a feature-based modular architecture:
 - **Form validation**: Zod schemas validate forms before submission
 - **Responsive design**: Tailwind utilities for mobile-first responsive layouts
 
+### Hybrid Storage Architecture
+
+Sequences use a **hybrid storage system** to optimize for both small and large sequences:
+
+**Storage Strategy:**
+- **Small sequences (< 10KB)**: Stored directly in PostgreSQL `sequence_data` column (VARCHAR 10000)
+- **Large sequences (≥ 10KB)**: Stored in files with metadata in database
+  - **Development**: Local filesystem using `aiofiles` (`/tmp/chromatin/sequences`)
+  - **Production**: S3-compatible object storage using `aioboto3`
+
+**Database Schema:**
+```python
+class Sequence(Base):
+    # Metadata (always in DB)
+    name: Mapped[str]
+    length: Mapped[int]  # Pre-calculated
+    gc_content: Mapped[float | None]  # Pre-calculated
+    molecular_weight: Mapped[float | None]  # Pre-calculated
+    sequence_type: Mapped[SequenceType]
+
+    # Hybrid storage fields
+    sequence_data: Mapped[str | None]  # For sequences < 10KB
+    file_path: Mapped[str | None]  # For sequences ≥ 10KB
+
+    @property
+    def uses_file_storage(self) -> bool:
+        return self.file_path is not None
+```
+
+**API Endpoints:**
+- `POST /api/sequences/`: Single sequence upload (max 10KB, enforced by Pydantic validator)
+- `POST /api/sequences/upload/fasta`: Bulk FASTA upload (any size, hybrid storage per sequence)
+- `GET /api/sequences/`: List endpoint returns `SequenceListOutput` (metadata only, no sequence_data)
+- `GET /api/sequences/{id}`: Detail endpoint returns `SequenceDetailOutput` (includes sequence_data only if stored in DB)
+- `GET /api/sequences/{id}/download`: Streaming FASTA download (works for both DB and file storage)
+
+**Storage Service:**
+The `core/storage.py` module provides a protocol-based abstraction:
+
+```python
+class StorageService(Protocol):
+    async def save(self, content: str, filename: str) -> str: ...
+    async def read(self, path: str) -> str: ...
+    async def read_chunks(self, path: str, chunk_size: int = 8192) -> AsyncIterator[bytes]: ...
+    async def delete(self, path: str) -> None: ...
+    async def exists(self, path: str) -> bool: ...
+```
+
+**Implementations:**
+- `LocalStorageService`: Uses `aiofiles` for async filesystem I/O
+- `S3StorageService`: Uses `aioboto3` for async S3 operations
+
+**Memory Efficiency:**
+- Downloads use streaming via `StreamingResponse` and `read_chunks()`
+- FASTA uploads read files in chunks (FastAPI's `UploadFile` handles this)
+- No large sequences are loaded entirely into memory
+
+**File Cleanup:**
+- Automatic cleanup on sequence update (if switching from file to DB storage)
+- Automatic cleanup on sequence deletion (if file_path exists)
+- Best-effort cleanup (failures don't prevent update/delete operations)
+
 ## Key Patterns
 
 ### Service Layer Pattern
@@ -282,8 +349,27 @@ stmt = select(Sequence).where(Sequence.id == seq_id).options(selectinload(Sequen
 ## Environment Configuration
 
 Required `.env` variables (see `core/config.py`):
+
+**Database:**
 - `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`
+
+**Authentication:**
 - `SECRET_KEY` (for JWT signing)
 - `ALGORITHM` (default: HS256)
 - `ACCESS_TOKEN_EXPIRE_MINUTES` (default: 30)
+
+**Application:**
 - `DEBUG` (default: True)
+- `ENVIRONMENT` (DEV or PROD, default: DEV)
+
+**Sequence Storage:**
+- `SEQUENCE_SIZE_THRESHOLD` (bytes, default: 10000) - sequences larger than this use file storage
+
+**Local Storage (DEV):**
+- `LOCAL_STORAGE_PATH` (default: /tmp/chromatin/sequences)
+
+**S3 Storage (PROD):**
+- `S3_BUCKET` (required for PROD environment)
+- `S3_REGION` (default: us-east-1)
+- `S3_ACCESS_KEY_ID` (optional, uses boto3 default credential chain if not set)
+- `S3_SECRET_ACCESS_KEY` (optional, uses boto3 default credential chain if not set)

@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from core.schemas import CamelCaseModel
 from sequences.enums import SequenceType
@@ -7,18 +7,33 @@ from sequences.enums import SequenceType
 
 class SequenceInput(CamelCaseModel):
     name: str = Field(..., min_length=1, max_length=255)
-    sequence_data: str
+    sequence_data: str = Field(
+        ..., max_length=10000
+    )  # Max 10KB for single sequence POST
 
     sequence_type: SequenceType
     project_id: int
 
     description: str | None = Field(None, max_length=255)
 
+    @field_validator("sequence_data")
+    @classmethod
+    def validate_sequence_size(cls, v: str) -> str:
+        # Enforce max size in bytes (10KB)
+        size_bytes = len(v.encode("utf-8"))
+        if size_bytes > 10000:
+            raise ValueError(
+                f"Sequence too large ({size_bytes} bytes). "
+                f"Maximum size is 10KB. Use FASTA upload for larger sequences."
+            )
+        return v
 
-class SequenceOutput(CamelCaseModel):
+
+class SequenceListOutput(CamelCaseModel):
+    """Schema for list endpoint - never includes sequence_data"""
+
     id: int
     name: str
-    sequence_data: str
 
     sequence_type: SequenceType
     user_id: int
@@ -27,11 +42,40 @@ class SequenceOutput(CamelCaseModel):
     description: str | None = None
 
     length: int
-    gc_content: float
-    molecular_weight: float
+    gc_content: float | None
+    molecular_weight: float | None
+
+    uses_file_storage: bool  # True if sequence is stored in file
 
     created_at: datetime
     updated_at: datetime
+
+
+class SequenceDetailOutput(CamelCaseModel):
+    """Schema for detail endpoint - includes sequence_data only if stored in DB"""
+
+    id: int
+    name: str
+    sequence_data: str | None  # Only present if stored in DB (not file)
+
+    sequence_type: SequenceType
+    user_id: int
+    project_id: int
+
+    description: str | None = None
+
+    length: int
+    gc_content: float | None
+    molecular_weight: float | None
+
+    uses_file_storage: bool  # True if sequence is stored in file
+
+    created_at: datetime
+    updated_at: datetime
+
+
+# Alias for backwards compatibility
+SequenceOutput = SequenceDetailOutput
 
 
 class FastaUploadInput(CamelCaseModel):
@@ -43,4 +87,7 @@ class FastaUploadInput(CamelCaseModel):
 
 class FastaUploadOutput(CamelCaseModel):
     sequences_created: int
-    sequences: list[SequenceOutput]
+
+
+class BatchDownloadInput(CamelCaseModel):
+    sequence_ids: list[int] = Field(..., min_length=1, max_length=1000)

@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.enums import AccessType
 from common.models import User
+from pydantic import ValidationError as PydanticValidationError
 from core.exceptions import NotFoundError, PermissionDeniedError, ValidationError
 from projects import Project
 from projects.service import create_project, check_project_access
@@ -42,7 +43,8 @@ async def test_create_sequence(
     assert sequence.user_id == test_user.id
     assert sequence.length == 8
     assert sequence.gc_content == 0.5
-    assert sequence.molecular_weight == 0.0
+    assert sequence.molecular_weight is None
+    assert sequence.uses_file_storage is False  # Small sequence stored in DB
     assert sequence.created_at is not None
     assert sequence.updated_at is not None
 
@@ -90,6 +92,20 @@ async def test_create_sequence_invalid_protein(
 
     with pytest.raises(ValidationError):
         await create_sequence(sequence_input, test_user.id, test_session)
+
+
+async def test_create_sequence_too_large(test_project: Project):
+    """Test that sequences > 10KB are rejected by the schema validator"""
+    # Create a sequence > 10KB (10001 bytes)
+    large_sequence = "A" * 10001
+
+    with pytest.raises(PydanticValidationError):
+        SequenceInput(
+            name="too_large",
+            sequence_type=SequenceType.DNA,
+            sequence_data=large_sequence,
+            project_id=test_project.id,
+        )
 
 
 async def test_create_sequence_nonexistent_project(

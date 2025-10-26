@@ -1,10 +1,17 @@
 from fastapi import APIRouter, Depends, status, UploadFile, File, Form
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.models import User
 from core.deps import get_db
 from core.security import get_current_user
-from sequences.schemas import SequenceOutput, SequenceInput, FastaUploadOutput
+from sequences.schemas import (
+    SequenceOutput,
+    SequenceListOutput,
+    SequenceInput,
+    FastaUploadOutput,
+    BatchDownloadInput,
+)
 from sequences.service import (
     create_sequence,
     get_sequence,
@@ -12,6 +19,8 @@ from sequences.service import (
     update_sequence,
     delete_sequence,
     upload_fasta,
+    stream_sequence_download,
+    stream_batch_download,
 )
 from sequences.enums import SequenceType
 
@@ -27,7 +36,7 @@ async def create_new_sequence(
     return await create_sequence(sequence_input, current_user.id, db_session)
 
 
-@router.get("/", response_model=list[SequenceOutput])
+@router.get("/", response_model=list[SequenceListOutput])
 async def list_sequences(
     skip: int = 0,
     limit: int = 100,
@@ -36,7 +45,7 @@ async def list_sequences(
     db_session: AsyncSession = Depends(get_db),
 ):
     """
-    List sequences for the current user.
+    List sequences for the current user (metadata only, no sequence data).
 
     - **skip**: Number of sequences to skip (pagination)
     - **limit**: Maximum number of sequences to return
@@ -77,30 +86,78 @@ async def delete_sequence_endpoint(
     await delete_sequence(sequence_id, current_user.id, db_session)
 
 
+@router.get("/{sequence_id}/download")
+async def download_sequence(
+    sequence_id: int,
+    current_user: User = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db),
+):
+    """
+    Download a sequence as a FASTA file (streaming).
+
+    Works for both database-stored and file-stored sequences.
+    """
+    # Get the sequence first to extract filename
+    seq_data = await get_sequence(sequence_id, current_user.id, db_session)
+
+    # Stream the download
+    return StreamingResponse(
+        await stream_sequence_download(sequence_id, current_user.id, db_session),
+        media_type="text/plain",
+        headers={
+            "Content-Disposition": f'attachment; filename="{seq_data.name}.fasta"'
+        },
+    )
+
+
+@router.post("/download/batch")
+async def download_sequences_batch(
+    batch_input: BatchDownloadInput,
+    current_user: User = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db),
+):
+    """
+    Download multiple sequences as a single FASTA file (streaming).
+
+    - **sequence_ids**: List of sequence IDs to download (max 1000)
+
+    Returns a single FASTA file containing all requested sequences.
+    Works for both database-stored and file-stored sequences.
+    """
+
+    batch_stream = await stream_batch_download(
+        batch_input.sequence_ids, current_user.id, db_session
+    )
+
+    # Stream the download
+    return StreamingResponse(
+        batch_stream,
+        media_type="text/plain",
+        headers={"Content-Disposition": 'attachment; filename="sequences.fasta"'},
+    )
+
+
 @router.post(
     "/upload/fasta",
     response_model=FastaUploadOutput,
-    status_code=status.HTTP_201_CREATED,
+    status_code=status.HTTP_200_OK,
 )
-async def upload_fasta_file(
+async def upload_fasta_files(
     current_user: User = Depends(get_current_user),
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(...),
     project_id: int = Form(...),
     sequence_type: SequenceType | None = Form(None),
     db_session: AsyncSession = Depends(get_db),
 ):
-    print("AAAAAAA")
     """
-    Upload a FASTA file and create sequences in a project.
+    Upload one or more FASTA files and create sequences in a project.
 
-    - **file**: FASTA file to upload
+    - **files**: One or more FASTA files to upload (each can contain multiple sequences)
     - **project_id**: ID of the project to add sequences to
     - **sequence_type**: Optional sequence type (DNA, RNA, PROTEIN). If not provided, will auto-detect.
-    """
-    # Read file content
-    content = await file.read()
-    fasta_content = content.decode("utf-8")
 
+    Returns the count of sequences created (not the sequences themselves).
+    """
     return await upload_fasta(
-        fasta_content, project_id, current_user.id, db_session, sequence_type
+        files, project_id, current_user.id, db_session, sequence_type
     )

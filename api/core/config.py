@@ -1,4 +1,12 @@
+from enum import Enum
 from pydantic_settings import BaseSettings
+
+from core.consts import MEGABYTE
+
+
+class StorageBackend(str, Enum):
+    LOCAL = "local"
+    S3 = "s3"
 
 
 class Settings(BaseSettings):
@@ -34,6 +42,35 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+
+    # Sequence Storage
+    ENVIRONMENT: str = "DEV"  # DEV or PROD
+    SEQUENCE_SIZE_THRESHOLD: int = (
+        10000  # bytes - sequences larger than this use file storage
+    )
+
+    # FASTA Upload Limits
+    MAX_FASTA_FILE_SIZE: int = 100 * MEGABYTE  # 100MB per file
+    MAX_FASTA_UPLOAD_TOTAL_SIZE: int = 500 * MEGABYTE  # 500MB total per upload
+
+    # Local storage (DEV)
+    LOCAL_STORAGE_PATH: str = "/tmp/chromatin/sequences"
+
+    # S3 storage (PROD)
+    S3_BUCKET: str | None = None
+    S3_REGION: str = "us-east-1"
+    S3_ACCESS_KEY_ID: str | None = None
+    S3_SECRET_ACCESS_KEY: str | None = None
+
+    @property
+    def USE_FILE_STORAGE(self) -> bool:
+        """Returns True if environment supports file storage (not just database)"""
+        return self.ENVIRONMENT in ("DEV", "PROD")
+
+    @property
+    def STORAGE_BACKEND(self) -> StorageBackend:
+        """Returns StorageBackend.LOCAL for DEV, StorageBackend.S3 for PROD"""
+        return StorageBackend.LOCAL if self.ENVIRONMENT == "DEV" else StorageBackend.S3
 
     class Config:
         env_file = "../.env"

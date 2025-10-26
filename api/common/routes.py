@@ -27,7 +27,6 @@ async def register(user_in: schemas.UserCreate, db: AsyncSession = Depends(get_d
 async def login(
     form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)
 ):
-    print(form_data.username, form_data.password)
     user = await authenticate_user(db, form_data.username, form_data.password)
 
     if not user:

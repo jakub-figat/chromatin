@@ -200,10 +200,14 @@ async def test_project(test_session: AsyncSession, test_user: User) -> Project:
 async def test_sequence(
     test_session: AsyncSession, test_user: User, test_project
 ) -> Sequence:
+    sequence_data = "ATGCATGC"
     sequence = Sequence(
         name="test_sequence",
         sequence_type=SequenceType.DNA,
-        sequence_data="ATGCATGC",
+        sequence_data=sequence_data,
+        length=len(sequence_data),
+        gc_content=0.5,  # 4 GC out of 8 bases
+        molecular_weight=None,  # Only for proteins
         description="test",
         user_id=test_user.id,
         project_id=test_project.id,
@@ -213,3 +217,29 @@ async def test_sequence(
     await test_session.flush()
 
     return sequence
+
+
+@pytest.fixture
+async def cleanup_storage():
+    """Cleanup test storage files after each test"""
+    import shutil
+    from pathlib import Path
+
+    # Track created paths
+    created_paths = []
+
+    def register_path(path):
+        created_paths.append(path)
+
+    yield register_path
+
+    # Cleanup after test
+    for path in created_paths:
+        try:
+            path_obj = Path(path)
+            if path_obj.is_file():
+                path_obj.unlink()
+            elif path_obj.is_dir():
+                shutil.rmtree(path_obj)
+        except Exception:
+            pass  # Best effort cleanup

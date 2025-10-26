@@ -5,9 +5,10 @@ from sqlalchemy import pool
 
 from alembic import context
 
-from core import settings
-from core import Base
+
 from common.models import User  # noqa: F401
+from core.config import settings
+from core.database import Base
 from sequences import Sequence  # noqa: F401
 from projects import Project  # noqa: F401
 
