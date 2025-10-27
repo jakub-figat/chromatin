@@ -5,6 +5,7 @@ from fastapi import UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
+from sqlalchemy.dialects.postgresql import insert
 
 from core.consts import MEGABYTE
 from common.enums import AccessType
@@ -469,13 +470,15 @@ async def upload_fasta(
 
     check_project_access(db_project, user_id, AccessType.WRITE, raise_exception=True)
 
-    total_sequences_created = 0
     total_size = 0
     storage = get_storage_service()
     storage_paths_created = []  # Track for cleanup on failure
+    sequence_values = []  # Collect all values for batch upsert
 
     try:
-        # Process files one by one
+        # TODO: Frontend should warn users if uploading sequences with conflicting names
+
+        # Process files and collect values
         for file in files:
             # Read and validate file size
             file_content = await file.read()
@@ -503,7 +506,7 @@ async def upload_fasta(
                     f"File '{file.filename}': FASTA parsing error: {e}"
                 )
 
-            # Validate and create sequences from this file
+            # Validate and prepare values for each sequence
             for fasta_seq in fasta_sequences:
                 # Validate sequence and determine type
                 try:
@@ -522,42 +525,65 @@ async def upload_fasta(
                     fasta_seq.sequence_data, detected_type
                 )
 
-                # Create sequence instance
-                db_sequence = Sequence(
-                    name=fasta_seq.header,
-                    length=seq_length,
-                    gc_content=gc_content,
-                    molecular_weight=molecular_weight,
-                    sequence_type=detected_type,
-                    description=fasta_seq.description,
-                    project_id=project_id,
-                    user_id=user_id,
-                )
-
                 # Determine storage strategy based on size
                 sequence_size = len(fasta_seq.sequence_data.encode("utf-8"))
-                if sequence_size > settings.SEQUENCE_SIZE_THRESHOLD:
-                    # Large sequence: store in file with deterministic name (content hash)
-                    content_hash = hashlib.sha256(
-                        fasta_seq.sequence_data.encode("utf-8")
-                    ).hexdigest()
-                    filename = f"{content_hash}.txt"
 
-                    db_sequence.file_path = await storage.save(
+                if sequence_size > settings.SEQUENCE_SIZE_THRESHOLD:
+                    # Calculate deterministic filename based on (user_id, name)
+                    # This ensures same user + same name = same file (enables overwriting)
+                    name_hash = hashlib.sha256(
+                        f"{user_id}:{fasta_seq.header}".encode()
+                    ).hexdigest()
+                    filename = f"{name_hash}.txt"
+
+                    # Large sequence: store in file
+                    new_file_path = await storage.save(
                         fasta_seq.sequence_data, filename
                     )
-                    storage_paths_created.append(db_sequence.file_path)
-                    db_sequence.sequence_data = None
+                    storage_paths_created.append(new_file_path)
+                    new_sequence_data = None
                 else:
                     # Small sequence: store in database
-                    db_sequence.sequence_data = fasta_seq.sequence_data
-                    db_sequence.file_path = None
+                    new_file_path = None
+                    new_sequence_data = fasta_seq.sequence_data
 
-                db_session.add(db_sequence)
-                total_sequences_created += 1
+                # Collect values for batch upsert
+                sequence_values.append(
+                    {
+                        "name": fasta_seq.header,
+                        "user_id": user_id,
+                        "project_id": project_id,
+                        "sequence_type": detected_type,
+                        "sequence_data": new_sequence_data,
+                        "file_path": new_file_path,
+                        "length": seq_length,
+                        "gc_content": gc_content,
+                        "molecular_weight": molecular_weight,
+                        "description": fasta_seq.description,
+                    }
+                )
 
-        # Batch insert all sequences with a single flush
-        await db_session.flush()
+        # Batch upsert all sequences in a single query
+        if sequence_values:
+            insert_stmt = insert(Sequence).values(sequence_values)
+
+            # On conflict (user_id, name), update all fields
+            upsert_stmt = insert_stmt.on_conflict_do_update(
+                index_elements=["user_id", "name"],
+                set_={
+                    "sequence_data": insert_stmt.excluded.sequence_data,
+                    "file_path": insert_stmt.excluded.file_path,
+                    "length": insert_stmt.excluded.length,
+                    "gc_content": insert_stmt.excluded.gc_content,
+                    "molecular_weight": insert_stmt.excluded.molecular_weight,
+                    "sequence_type": insert_stmt.excluded.sequence_type,
+                    "description": insert_stmt.excluded.description,
+                    "project_id": insert_stmt.excluded.project_id,
+                },
+            )
+
+            await db_session.execute(upsert_stmt)
+            await db_session.flush()
 
     except Exception:
         # Cleanup storage files on failure
@@ -570,5 +596,5 @@ async def upload_fasta(
         raise
 
     return FastaUploadOutput(
-        sequences_created=total_sequences_created,
+        sequences_created=len(sequence_values),
     )

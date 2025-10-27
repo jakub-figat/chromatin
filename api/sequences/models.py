@@ -1,4 +1,4 @@
-from sqlalchemy import String, ForeignKey
+from sqlalchemy import String, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, relationship, mapped_column
 
 from common.models import User
@@ -10,8 +10,11 @@ from core.database import Base
 
 class Sequence(Base):
     __tablename__ = "sequences"
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_user_sequence_name"),
+    )
 
-    name: Mapped[str] = mapped_column(String(255), unique=True)
+    name: Mapped[str] = mapped_column(String(255))
 
     # Hybrid storage: small sequences in DB, large sequences in files
     sequence_data: Mapped[str | None] = mapped_column(String(10000))  # Max 10KB in DB

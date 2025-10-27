@@ -91,8 +91,7 @@ class LocalStorageService:
 
     async def save(self, content: str, filename: str) -> str:
         """Save to local filesystem"""
-        unique_filename = f"{uuid.uuid4()}_{filename}"
-        file_path = self.base_path / unique_filename
+        file_path = self.base_path / filename
 
         async with aiofiles.open(file_path, "w", encoding="utf-8") as f:
             await f.write(content)

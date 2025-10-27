@@ -219,27 +219,19 @@ async def test_sequence(
     return sequence
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 async def cleanup_storage():
-    """Cleanup test storage files after each test"""
+    """Cleanup test storage directory after each test"""
     import shutil
     from pathlib import Path
 
-    # Track created paths
-    created_paths = []
+    # Run the test
+    yield
 
-    def register_path(path):
-        created_paths.append(path)
-
-    yield register_path
-
-    # Cleanup after test
-    for path in created_paths:
+    # Cleanup entire storage directory after test
+    storage_path = Path(settings.LOCAL_STORAGE_PATH)
+    if storage_path.exists():
         try:
-            path_obj = Path(path)
-            if path_obj.is_file():
-                path_obj.unlink()
-            elif path_obj.is_dir():
-                shutil.rmtree(path_obj)
+            shutil.rmtree(storage_path)
         except Exception:
             pass  # Best effort cleanup
