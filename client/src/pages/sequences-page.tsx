@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Plus, Edit, Trash2, Filter, Upload, Download, CheckSquare, Square } from 'lucide-react';
+import { Plus, Edit, Trash2, Filter, Upload, Download, CheckSquare, Square, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -243,10 +243,7 @@ export function SequencesPage() {
 
               <div className="flex items-start justify-between mb-4 ml-8">
                 <div className="flex-1">
-                  <h3
-                    className="text-lg font-semibold mb-2 hover:text-primary cursor-pointer transition-colors"
-                    onClick={() => navigate(`/sequences/${sequence.id}`)}
-                  >
+                  <h3 className="text-lg font-semibold mb-2">
                     {sequence.name}
                   </h3>
                   <span
@@ -312,7 +309,7 @@ export function SequencesPage() {
                 </p>
               )}
 
-              <div className="text-xs text-muted-foreground border-t pt-2 mt-2">
+              <div className="text-xs text-muted-foreground mb-4">
                 <div>
                   Project:{' '}
                   {projects?.find((p) => p.id === sequence.projectId)?.name ||
@@ -322,6 +319,15 @@ export function SequencesPage() {
                   Created {new Date(sequence.createdAt).toLocaleDateString()}
                 </div>
               </div>
+
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => navigate(`/sequences/${sequence.id}`)}
+              >
+                <Eye className="h-4 w-4 mr-2" />
+                View Sequence
+              </Button>
             </Card>
           ))}
         </div>
