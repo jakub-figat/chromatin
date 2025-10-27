@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Plus, Edit, Trash2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Plus, Edit, Trash2, FolderOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Navbar } from '@/components/navbar';
@@ -10,6 +11,7 @@ import type { Project } from '@/types/project';
 export function ProjectsPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | undefined>();
+  const navigate = useNavigate();
 
   const { data: projects, isLoading, error } = useProjects();
   const deleteProject = useDeleteProject();
@@ -22,6 +24,10 @@ export function ProjectsPage() {
         console.error('Failed to delete project:', error);
       }
     }
+  };
+
+  const handleViewSequences = (projectId: number) => {
+    navigate(`/sequences?projectId=${projectId}`);
   };
 
   if (isLoading) {
@@ -117,9 +123,18 @@ export function ProjectsPage() {
                 </p>
               )}
 
-              <div className="text-xs text-muted-foreground">
+              <div className="text-xs text-muted-foreground mb-4">
                 Created {new Date(project.createdAt).toLocaleDateString()}
               </div>
+
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => handleViewSequences(project.id)}
+              >
+                <FolderOpen className="h-4 w-4 mr-2" />
+                View Sequences
+              </Button>
             </Card>
           ))}
         </div>

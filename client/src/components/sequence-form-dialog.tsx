@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -18,10 +19,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useCreateSequence, useUpdateSequence } from '@/hooks/use-sequences';
+import { useCreateSequence, useUpdateSequence, useSequence } from '@/hooks/use-sequences';
 import { useProjects } from '@/hooks/use-projects';
 import { isValidSequence, getSequenceValidationError, getAllowedChars } from '@/lib/sequence-validation';
-import type { Sequence } from '@/types/sequence';
 
 const sequenceSchema = z.object({
   name: z.string().min(1, 'Name is required').max(255, 'Name too long'),
@@ -47,17 +47,18 @@ type SequenceFormData = z.infer<typeof sequenceSchema>;
 interface SequenceFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  sequence?: Sequence;
+  sequenceId?: number;
   defaultProjectId?: number;
 }
 
 export function SequenceFormDialog({
   open,
   onOpenChange,
-  sequence,
+  sequenceId,
   defaultProjectId,
 }: SequenceFormDialogProps) {
-  const isEditing = !!sequence;
+  const isEditing = !!sequenceId;
+  const { data: sequence, isLoading } = useSequence(sequenceId);
   const createSequence = useCreateSequence();
   const updateSequence = useUpdateSequence();
   const { data: projects } = useProjects();
@@ -72,22 +73,33 @@ export function SequenceFormDialog({
   } = useForm<SequenceFormData>({
     resolver: zodResolver(sequenceSchema),
     defaultValues: {
-      name: sequence?.name || '',
-      sequenceData: sequence?.sequenceData || '',
-      sequenceType: sequence?.sequenceType || 'DNA',
-      description: sequence?.description || '',
-      projectId: sequence?.projectId || defaultProjectId,
+      name: '',
+      sequenceData: '',
+      sequenceType: 'DNA',
+      description: '',
+      projectId: defaultProjectId,
     },
   });
 
   const sequenceType = watch('sequenceType');
   const projectId = watch('projectId');
 
+  // Populate form when editing (except sequenceData for safety/size reasons)
+  useEffect(() => {
+    if (sequence && isEditing) {
+      setValue('name', sequence.name);
+      setValue('sequenceType', sequence.sequenceType);
+      setValue('description', sequence.description || '');
+      setValue('projectId', sequence.projectId);
+      // DO NOT prefill sequenceData - security/size concern
+    }
+  }, [sequence, isEditing, setValue]);
+
   const onSubmit = async (data: SequenceFormData) => {
     try {
-      if (isEditing) {
+      if (isEditing && sequenceId) {
         await updateSequence.mutateAsync({
-          id: sequence.id,
+          id: sequenceId,
           data,
         });
       } else {

@@ -1,13 +1,15 @@
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from common.enums import AccessType
+from common.models import User
 from core.exceptions import NotFoundError, PermissionDeniedError
 from projects.service import (
     create_project,
     get_project,
     list_user_projects,
     update_project,
-    delete_project,
+    delete_project, check_project_access,
 )
 from projects.schemas import ProjectInput
 
@@ -149,3 +151,69 @@ async def test_delete_project_as_non_owner(
 async def test_delete_nonexistent_project(test_session: AsyncSession, test_user):
     with pytest.raises(NotFoundError):
         await delete_project(test_session, 99999, test_user.id)
+
+
+@pytest.mark.parametrize(
+    "is_public,is_owner,access_type,should_pass,expected_exception",
+    [
+        # Owner always has access
+        (True, True, AccessType.READ, True, None),
+        (True, True, AccessType.WRITE, True, None),
+        (False, True, AccessType.READ, True, None),
+        (False, True, AccessType.WRITE, True, None),
+        # Non-owner on public project
+        (True, False, AccessType.READ, True, None),  # Can read public
+        (
+            True,
+            False,
+            AccessType.WRITE,
+            False,
+            PermissionDeniedError,
+        ),  # Cannot write public
+        # Non-owner on private project
+        (
+            False,
+            False,
+            AccessType.READ,
+            False,
+            NotFoundError,
+        ),  # Cannot read private (appears as not found)
+        (
+            False,
+            False,
+            AccessType.WRITE,
+            False,
+            NotFoundError,
+        ),  # Cannot write private (appears as not found)
+    ],
+)
+async def test_check_project_access(
+    test_session: AsyncSession,
+    test_user: User,
+    test_user_2: User,
+    is_public: bool,
+    is_owner: bool,
+    access_type: AccessType,
+    should_pass: bool,
+    expected_exception: type[Exception] | None,
+):
+    """Test project access control for different scenarios"""
+    # Create project as test_user
+    project_in = ProjectInput(name="Test Project", is_public=is_public)
+    project = await create_project(test_session, test_user.id, project_in)
+
+    # Determine which user to check access for
+    user_id = test_user.id if is_owner else test_user_2.id
+
+    # Test with raise_exception=False
+    result = check_project_access(project, user_id, access_type, raise_exception=False)
+    assert result == should_pass
+
+    # Test with raise_exception=True
+    if should_pass:
+        # Should not raise
+        check_project_access(project, user_id, access_type, raise_exception=True)
+    else:
+        # Should raise the specific exception
+        with pytest.raises(expected_exception):
+            check_project_access(project, user_id, access_type, raise_exception=True)

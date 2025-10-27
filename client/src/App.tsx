@@ -7,6 +7,7 @@ import { RegisterPage } from '@/pages/register-page'
 import { DashboardPage } from '@/pages/dashboard-page'
 import { ProjectsPage } from '@/pages/projects-page'
 import { SequencesPage } from '@/pages/sequences-page'
+import { SequenceDetailPage } from '@/pages/sequence-detail-page'
 
 function App() {
   return (
@@ -37,6 +38,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <SequencesPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/sequences/:id"
+            element={
+              <ProtectedRoute>
+                <SequenceDetailPage />
               </ProtectedRoute>
             }
           />

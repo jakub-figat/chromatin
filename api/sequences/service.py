@@ -421,7 +421,7 @@ async def stream_batch_download(
                 yield db_sequence.sequence_data.encode("utf-8")
             elif db_sequence.file_path:
                 # Stored in file - stream in chunks
-                async for chunk in storage.read_chunks(db_sequence.file_path):
+                async for chunk in await storage.read_chunks(db_sequence.file_path):
                     yield chunk
             else:
                 raise ValueError(f"Sequence {db_sequence.id} has no data")

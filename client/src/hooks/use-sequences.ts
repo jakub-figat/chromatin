@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '@/lib/api-client';
 import { useAuthStore } from '@/stores/auth-store'
-import type { Sequence, SequenceInput, FastaUploadOutput } from '@/types/sequence';
+import type { SequenceListItem, SequenceDetail, SequenceInput, FastaUploadOutput } from '@/types/sequence';
 
 // Fetch all sequences for the current user, optionally filtered by project
 export function useSequences(skip: number = 0, limit: number = 100, projectId?: number) {
@@ -15,19 +15,19 @@ export function useSequences(skip: number = 0, limit: number = 100, projectId?: 
       if (projectId !== undefined) {
         params.append('project_id', projectId.toString());
       }
-      const data = await api.get<Sequence[]>(`/sequences/?${params.toString()}`);
+      const data = await api.get<SequenceListItem[]>(`/sequences/?${params.toString()}`);
       return data;
     },
   });
 }
 
-// Fetch a single sequence by ID
+// Fetch a single sequence by ID (includes sequence data)
 export function useSequence(sequenceId: number | undefined) {
   return useQuery({
     queryKey: ['sequences', sequenceId],
     queryFn: async () => {
       if (!sequenceId) throw new Error('Sequence ID is required');
-      const data = await api.get<Sequence>(`/sequences/${sequenceId}`);
+      const data = await api.get<SequenceDetail>(`/sequences/${sequenceId}`);
       return data;
     },
     enabled: !!sequenceId,
@@ -40,7 +40,7 @@ export function useCreateSequence() {
 
   return useMutation({
     mutationFn: async (input: SequenceInput) => {
-      const data = await api.post<Sequence>('/sequences/', input);
+      const data = await api.post<SequenceDetail>('/sequences/', input);
       return data;
     },
     onSuccess: () => {
@@ -67,7 +67,7 @@ export function useUpdateSequence() {
       id: number;
       data: SequenceInput;
     }) => {
-      const result = await api.patch<Sequence>(
+      const result = await api.patch<SequenceDetail>(
         `/sequences/${id}`,
         data
       );
@@ -106,22 +106,25 @@ export function useDeleteSequence() {
   });
 }
 
-// Upload FASTA file
+// Upload FASTA file(s)
 export function useUploadFasta() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async ({
-      file,
+      files,
       projectId,
       sequenceType,
     }: {
-      file: File;
+      files: File[];
       projectId: number;
       sequenceType?: string;
     }) => {
       const formData = new FormData();
-      formData.append('file', file);
+      // Append all files with the same key 'files'
+      files.forEach((file) => {
+        formData.append('files', file);
+      });
       formData.append('project_id', projectId.toString());
       if (sequenceType) {
         formData.append('sequence_type', sequenceType);
@@ -151,6 +154,86 @@ export function useUploadFasta() {
     },
     onError: (error: any) => {
       const message = error?.message || 'Failed to upload FASTA file';
+      toast.error(message);
+    },
+  });
+}
+
+// Download single sequence as FASTA
+export function useDownloadSequence() {
+  return useMutation({
+    mutationFn: async (sequenceId: number) => {
+      const { token } = useAuthStore.getState();
+      const response = await fetch(`/api/sequences/${sequenceId}/download`, {
+        headers: {
+          ...(token && { Authorization: `Bearer ${token}` }),
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to download sequence');
+      }
+
+      const blob = await response.blob();
+      const filename = `sequence_${sequenceId}.fasta`;
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    },
+    onSuccess: () => {
+      toast.success('Sequence downloaded successfully!');
+    },
+    onError: (error: any) => {
+      const message = error?.message || 'Failed to download sequence';
+      toast.error(message);
+    },
+  });
+}
+
+// Download multiple sequences as single FASTA
+export function useDownloadBatch() {
+  return useMutation({
+    mutationFn: async (sequenceIds: number[]) => {
+      const { token } = useAuthStore.getState();
+      const response = await fetch('/api/sequences/download/batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token && { Authorization: `Bearer ${token}` }),
+        },
+        body: JSON.stringify({ sequenceIds }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to download sequences');
+      }
+
+      const blob = await response.blob();
+      const filename = `sequences_batch_${sequenceIds.length}.fasta`;
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    },
+    onSuccess: (_, sequenceIds) => {
+      toast.success(`${sequenceIds.length} sequence(s) downloaded successfully!`);
+    },
+    onError: (error: any) => {
+      const message = error?.message || 'Failed to download sequences';
       toast.error(message);
     },
   });
