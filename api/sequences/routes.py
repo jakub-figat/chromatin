@@ -41,6 +41,10 @@ async def list_sequences(
     skip: int = 0,
     limit: int = 100,
     project_id: int | None = None,
+    sequence_type: SequenceType | None = None,
+    name: str | None = None,
+    length_gte: int | None = None,
+    length_lte: int | None = None,
     current_user: User = Depends(get_current_user),
     db_session: AsyncSession = Depends(get_db),
 ):
@@ -50,9 +54,21 @@ async def list_sequences(
     - **skip**: Number of sequences to skip (pagination)
     - **limit**: Maximum number of sequences to return
     - **project_id**: Optional. Filter by project ID
+    - **sequence_type**: Optional. Filter by sequence type (DNA, RNA, PROTEIN)
+    - **name**: Optional. Filter by sequence name (case-insensitive partial match)
+    - **length_gte**: Optional. Filter sequences with length >= this value
+    - **length_lte**: Optional. Filter sequences with length <= this value
     """
     return await list_user_sequences(
-        current_user.id, db_session, skip, limit, project_id
+        current_user.id,
+        db_session,
+        skip,
+        limit,
+        project_id,
+        sequence_type,
+        name,
+        length_gte,
+        length_lte,
     )
 
 

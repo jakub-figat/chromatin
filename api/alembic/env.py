@@ -11,6 +11,7 @@ from core.config import settings
 from core.database import Base
 from sequences import Sequence  # noqa: F401
 from projects import Project  # noqa: F401
+from jobs.models import Job  # noqa: F401
 
 
 config = context.config

@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Plus, Edit, Trash2, Filter, Upload, Download, CheckSquare, Square, Eye } from 'lucide-react';
+import { Plus, Edit, Trash2, Filter, Upload, Download, CheckSquare, Square, Eye, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Navbar } from '@/components/navbar';
 import { SequenceFormDialog } from '@/components/sequence-form-dialog';
 import { FastaUploadDialog } from '@/components/fasta-upload-dialog';
@@ -25,6 +27,10 @@ export function SequencesPage() {
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const [editingSequenceId, setEditingSequenceId] = useState<number | undefined>();
   const [filterProjectId, setFilterProjectId] = useState<number | undefined>();
+  const [filterSequenceType, setFilterSequenceType] = useState<string | undefined>();
+  const [filterName, setFilterName] = useState<string>('');
+  const [filterLengthGte, setFilterLengthGte] = useState<string>('');
+  const [filterLengthLte, setFilterLengthLte] = useState<string>('');
   const [selectedSequenceIds, setSelectedSequenceIds] = useState<number[]>([]);
 
   // Read projectId from URL params on mount
@@ -38,7 +44,15 @@ export function SequencesPage() {
     }
   }, [searchParams]);
 
-  const { data: sequences, isLoading, error } = useSequences(0, 100, filterProjectId);
+  const { data: sequences, isLoading, error } = useSequences({
+    skip: 0,
+    limit: 100,
+    projectId: filterProjectId,
+    sequenceType: filterSequenceType,
+    name: filterName || undefined,
+    lengthGte: filterLengthGte ? parseInt(filterLengthGte) : undefined,
+    lengthLte: filterLengthLte ? parseInt(filterLengthLte) : undefined,
+  });
   const { data: projects } = useProjects();
   const deleteSequence = useDeleteSequence();
   const downloadSequence = useDownloadSequence();
@@ -153,64 +167,150 @@ export function SequencesPage() {
         </div>
       </div>
 
-      {/* Filter by project and batch actions */}
-      <div className="mb-6 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Filter by project:</span>
+      {/* Filters */}
+      <Card className="p-4 mb-6">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {/* Project Filter */}
+          <div className="space-y-2">
+            <Label htmlFor="filter-project">Project</Label>
+            <Select
+              value={filterProjectId?.toString() || 'all'}
+              onValueChange={(value) =>
+                setFilterProjectId(value === 'all' ? undefined : parseInt(value))
+              }
+            >
+              <SelectTrigger id="filter-project">
+                <SelectValue placeholder="All projects" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All projects</SelectItem>
+                {projects?.map((project) => (
+                  <SelectItem key={project.id} value={project.id.toString()}>
+                    {project.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <Select
-            value={filterProjectId?.toString() || 'all'}
-            onValueChange={(value) =>
-              setFilterProjectId(value === 'all' ? undefined : parseInt(value))
-            }
-          >
-            <SelectTrigger className="w-[250px]">
-              <SelectValue placeholder="All projects" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All projects</SelectItem>
-              {projects?.map((project) => (
-                <SelectItem key={project.id} value={project.id.toString()}>
-                  {project.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+
+          {/* Type Filter */}
+          <div className="space-y-2">
+            <Label htmlFor="filter-type">Sequence Type</Label>
+            <Select
+              value={filterSequenceType || 'all'}
+              onValueChange={(value) =>
+                setFilterSequenceType(value === 'all' ? undefined : value)
+              }
+            >
+              <SelectTrigger id="filter-type">
+                <SelectValue placeholder="All types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All types</SelectItem>
+                <SelectItem value="DNA">DNA</SelectItem>
+                <SelectItem value="RNA">RNA</SelectItem>
+                <SelectItem value="PROTEIN">Protein</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Name Filter */}
+          <div className="space-y-2">
+            <Label htmlFor="filter-name">Name</Label>
+            <div className="relative">
+              <Input
+                id="filter-name"
+                placeholder="Search by name..."
+                value={filterName}
+                onChange={(e) => setFilterName(e.target.value)}
+              />
+              {filterName && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full"
+                  onClick={() => setFilterName('')}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Length Range Filters */}
+          <div className="space-y-2">
+            <Label>Length (bp)</Label>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Min"
+                type="number"
+                value={filterLengthGte}
+                onChange={(e) => setFilterLengthGte(e.target.value)}
+                className="w-full"
+              />
+              <Input
+                placeholder="Max"
+                type="number"
+                value={filterLengthLte}
+                onChange={(e) => setFilterLengthLte(e.target.value)}
+                className="w-full"
+              />
+            </div>
+          </div>
         </div>
 
-        {sequences && sequences.length > 0 && (
-          <div className="flex items-center gap-2">
+        {/* Clear Filters Button */}
+        {(filterProjectId || filterSequenceType || filterName || filterLengthGte || filterLengthLte) && (
+          <div className="mt-4 pt-4 border-t">
             <Button
               variant="outline"
               size="sm"
-              onClick={toggleSelectAll}
+              onClick={() => {
+                setFilterProjectId(undefined);
+                setFilterSequenceType(undefined);
+                setFilterName('');
+                setFilterLengthGte('');
+                setFilterLengthLte('');
+              }}
             >
-              {selectedSequenceIds.length === sequences.length ? (
-                <>
-                  <CheckSquare className="h-4 w-4 mr-2" />
-                  Deselect All
-                </>
-              ) : (
-                <>
-                  <Square className="h-4 w-4 mr-2" />
-                  Select All
-                </>
-              )}
+              <X className="h-4 w-4 mr-2" />
+              Clear All Filters
             </Button>
-            {selectedSequenceIds.length > 0 && (
-              <Button
-                onClick={handleBatchDownload}
-                disabled={downloadBatch.isPending}
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Download {selectedSequenceIds.length} Selected
-              </Button>
-            )}
           </div>
         )}
-      </div>
+      </Card>
+
+      {/* Batch actions */}
+      {sequences && sequences.length > 0 && (
+        <div className="mb-6 flex items-center justify-end gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={toggleSelectAll}
+          >
+            {selectedSequenceIds.length === sequences.length ? (
+              <>
+                <CheckSquare className="h-4 w-4 mr-2" />
+                Deselect All
+              </>
+            ) : (
+              <>
+                <Square className="h-4 w-4 mr-2" />
+                Select All
+              </>
+            )}
+          </Button>
+          {selectedSequenceIds.length > 0 && (
+            <Button
+              onClick={handleBatchDownload}
+              disabled={downloadBatch.isPending}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Download {selectedSequenceIds.length} Selected
+            </Button>
+          )}
+        </div>
+      )}
 
       {!sequences || sequences.length === 0 ? (
         <Card className="p-12 text-center">
@@ -316,7 +416,7 @@ export function SequencesPage() {
                     `Project #${sequence.projectId}`}
                 </div>
                 <div className="mt-1">
-                  Created {new Date(sequence.createdAt).toLocaleDateString()}
+                  Created {new Date(sequence.createdAt).toLocaleString()}
                 </div>
               </div>
 

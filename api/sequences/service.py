@@ -161,9 +161,13 @@ async def list_user_sequences(
     skip: int = 0,
     limit: int = 100,
     project_id: int | None = None,
+    sequence_type: SequenceType | None = None,
+    name: str | None = None,
+    length_gte: int | None = None,
+    length_lte: int | None = None,
 ) -> list[SequenceListOutput]:
     """
-    List all sequences owned by a user, optionally filtered by project.
+    List all sequences owned by a user with optional filters.
     Returns metadata only (no sequence_data).
     """
     stmt = select(Sequence).where(Sequence.user_id == user_id)
@@ -171,6 +175,20 @@ async def list_user_sequences(
     # Filter by project if provided
     if project_id is not None:
         stmt = stmt.where(Sequence.project_id == project_id)
+
+    # Filter by sequence type if provided
+    if sequence_type is not None:
+        stmt = stmt.where(Sequence.sequence_type == sequence_type)
+
+    # Filter by name if provided (case-insensitive partial match)
+    if name is not None:
+        stmt = stmt.where(Sequence.name.ilike(f"%{name}%"))
+
+    # Filter by length range if provided
+    if length_gte is not None:
+        stmt = stmt.where(Sequence.length >= length_gte)
+    if length_lte is not None:
+        stmt = stmt.where(Sequence.length <= length_lte)
 
     stmt = stmt.order_by(Sequence.created_at.desc()).offset(skip).limit(limit)
 

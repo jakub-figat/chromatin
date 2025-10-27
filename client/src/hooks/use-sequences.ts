@@ -4,16 +4,48 @@ import { api } from '@/lib/api-client';
 import { useAuthStore } from '@/stores/auth-store'
 import type { SequenceListItem, SequenceDetail, SequenceInput, FastaUploadOutput } from '@/types/sequence';
 
-// Fetch all sequences for the current user, optionally filtered by project
-export function useSequences(skip: number = 0, limit: number = 100, projectId?: number) {
+export interface SequenceFilters {
+  skip?: number;
+  limit?: number;
+  projectId?: number;
+  sequenceType?: string;
+  name?: string;
+  lengthGte?: number;
+  lengthLte?: number;
+}
+
+// Fetch all sequences for the current user with optional filters
+export function useSequences(filters: SequenceFilters = {}) {
+  const {
+    skip = 0,
+    limit = 100,
+    projectId,
+    sequenceType,
+    name,
+    lengthGte,
+    lengthLte,
+  } = filters;
+
   return useQuery({
-    queryKey: ['sequences', skip, limit, projectId],
+    queryKey: ['sequences', skip, limit, projectId, sequenceType, name, lengthGte, lengthLte],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.append('skip', skip.toString());
       params.append('limit', limit.toString());
       if (projectId !== undefined) {
         params.append('project_id', projectId.toString());
+      }
+      if (sequenceType) {
+        params.append('sequence_type', sequenceType);
+      }
+      if (name) {
+        params.append('name', name);
+      }
+      if (lengthGte !== undefined) {
+        params.append('length_gte', lengthGte.toString());
+      }
+      if (lengthLte !== undefined) {
+        params.append('length_lte', lengthLte.toString());
       }
       const data = await api.get<SequenceListItem[]>(`/sequences/?${params.toString()}`);
       return data;

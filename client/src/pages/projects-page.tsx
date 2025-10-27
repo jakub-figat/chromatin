@@ -124,7 +124,7 @@ export function ProjectsPage() {
               )}
 
               <div className="text-xs text-muted-foreground mb-4">
-                Created {new Date(project.createdAt).toLocaleDateString()}
+                Created {new Date(project.createdAt).toLocaleString()}
               </div>
 
               <Button

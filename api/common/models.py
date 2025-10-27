@@ -8,6 +8,7 @@ from core.database import Base
 if TYPE_CHECKING:
     from sequences.models import Sequence
     from projects.models import Project
+    from jobs.models import Job
 
 
 class User(Base):
@@ -29,6 +30,7 @@ class User(Base):
     projects: Mapped[list["Project"]] = relationship(
         back_populates="user", lazy="raise"
     )
+    jobs: Mapped[list["Job"]] = relationship(back_populates="user", lazy="raise")
 
     def __repr__(self) -> str:
         return f"<User(id={self.id}, email={self.email})>"
