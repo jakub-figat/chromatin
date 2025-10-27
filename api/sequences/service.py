@@ -15,6 +15,7 @@ from core.storage import get_storage_service
 from projects.service import check_project_access
 from sequences import Sequence
 from sequences.enums import SequenceType
+from sequences.fasta_parser import parse_fasta
 from sequences.schemas import (
     SequenceInput,
     SequenceOutput,
@@ -22,22 +23,8 @@ from sequences.schemas import (
     FastaUploadOutput,
 )
 from sequences.consts import DNA_CHARS, RNA_CHARS, PROTEIN_CHARS, AMINO_ACID_WEIGHTS
-from sequences.fasta_parser import parse_fasta, validate_fasta_sequence
 from projects.models import Project
-
-
-def check_sequence_is_valid(sequence_data: str, seq_type: SequenceType) -> bool:
-    sequence_upper = sequence_data.upper()
-    sequence_set = set(sequence_upper)
-
-    if seq_type == SequenceType.DNA:
-        return sequence_set.issubset(DNA_CHARS)
-    elif seq_type == SequenceType.RNA:
-        return sequence_set.issubset(RNA_CHARS)
-    elif seq_type == SequenceType.PROTEIN:
-        return sequence_set.issubset(PROTEIN_CHARS)
-
-    return False
+from sequences.utils import validate_sequence_data
 
 
 async def get_sequence_data(sequence: Sequence) -> str:
@@ -106,12 +93,9 @@ async def create_sequence(
     Create a single sequence (max 10KB, always stored in database).
     For larger sequences, use FASTA upload endpoint.
     """
-    if not check_sequence_is_valid(
-        sequence_input.sequence_data, sequence_input.sequence_type
-    ):
-        raise ValidationError(
-            f"Invalid sequence of type {sequence_input.sequence_type}"
-        )
+    validate_sequence_data(
+        sequence_input.sequence_data, expected_type=sequence_input.sequence_type
+    )
 
     stmt = select(Project).where(Project.id == sequence_input.project_id).limit(1)
     db_project = await db_session.scalar(stmt)
@@ -216,12 +200,9 @@ async def update_sequence(
     )
 
     # Validate sequence data if type or data changed
-    if not check_sequence_is_valid(
-        sequence_input.sequence_data, sequence_input.sequence_type
-    ):
-        raise ValidationError(
-            f"Invalid sequence of type {sequence_input.sequence_type}"
-        )
+    validate_sequence_data(
+        sequence_input.sequence_data, expected_type=sequence_input.sequence_type
+    )
 
     # Check if project is being changed
     if sequence_input.project_id != db_sequence.project_id:
@@ -510,7 +491,9 @@ async def upload_fasta(
             for fasta_seq in fasta_sequences:
                 # Validate sequence and determine type
                 try:
-                    detected_type = validate_fasta_sequence(fasta_seq, sequence_type)
+                    detected_type = validate_sequence_data(
+                        fasta_seq.sequence_data, fasta_seq.header, sequence_type
+                    )
                 except ValidationError as e:
                     raise ValidationError(
                         f"File '{file.filename}', sequence '{fasta_seq.header}': {e}"

@@ -16,7 +16,6 @@ from sequences.service import (
     list_user_sequences,
     update_sequence,
     delete_sequence,
-    check_sequence_is_valid,
 )
 
 
@@ -531,55 +530,3 @@ async def test_delete_sequence_as_non_owner(
 async def test_delete_nonexistent_sequence(test_session: AsyncSession, test_user: User):
     with pytest.raises(NotFoundError):
         await delete_sequence(99999, test_user.id, test_session)
-
-
-# Unit tests for sequence validation
-
-
-@pytest.mark.parametrize(
-    "sequence_data,sequence_type,expected",
-    [
-        # Valid DNA sequences
-        ("ATGC", SequenceType.DNA, True),
-        ("ATGCATGC", SequenceType.DNA, True),
-        ("AAAATTTTGGGGCCCC", SequenceType.DNA, True),
-        ("atgc", SequenceType.DNA, True),  # Lowercase should work
-        ("ATGCatgc", SequenceType.DNA, True),  # Mixed case
-        # Invalid DNA sequences
-        ("ATGCU", SequenceType.DNA, False),  # U is RNA
-        ("ATGCXYZ", SequenceType.DNA, False),  # Invalid characters
-        ("ATGC123", SequenceType.DNA, False),  # Numbers
-        ("ATG-C", SequenceType.DNA, False),  # Special characters
-        # Valid RNA sequences
-        ("AUGC", SequenceType.RNA, True),
-        ("AUGCAUGC", SequenceType.RNA, True),
-        ("AAAAUUUUGGGGCCCC", SequenceType.RNA, True),
-        ("augc", SequenceType.RNA, True),  # Lowercase
-        ("AUGCaugc", SequenceType.RNA, True),  # Mixed case
-        # Invalid RNA sequences
-        ("AUGCT", SequenceType.RNA, False),  # T is DNA
-        ("AUGCXYZ", SequenceType.RNA, False),  # Invalid characters
-        ("AUGC123", SequenceType.RNA, False),  # Numbers
-        # Valid protein sequences
-        ("ACDEFGHIKLMNPQRSTVWY", SequenceType.PROTEIN, True),
-        ("MKVLWAALLVTFLAGCQAKVE", SequenceType.PROTEIN, True),
-        ("acdefg", SequenceType.PROTEIN, True),  # Lowercase
-        ("ACDEFGacdefg", SequenceType.PROTEIN, True),  # Mixed case
-        # Invalid protein sequences
-        ("ACDEFGXYZ", SequenceType.PROTEIN, False),  # X, Z not in standard set
-        ("ACDEFG123", SequenceType.PROTEIN, False),  # Numbers
-        ("ACDEFG-", SequenceType.PROTEIN, False),  # Special characters
-        # Edge cases
-        ("", SequenceType.DNA, True),  # Empty string
-        ("A", SequenceType.DNA, True),  # Single character
-        ("U", SequenceType.RNA, True),  # Single RNA base
-        ("M", SequenceType.PROTEIN, True),  # Single amino acid
-    ],
-)
-def test_check_sequence_is_valid(
-    sequence_data: str, sequence_type: SequenceType, expected: bool
-):
-    """Test sequence validation for different types and data"""
-    result = check_sequence_is_valid(sequence_data, sequence_type)
-    assert result == expected
-

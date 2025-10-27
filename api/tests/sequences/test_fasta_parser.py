@@ -2,8 +2,6 @@ import pytest
 
 from sequences.fasta_parser import (
     parse_fasta,
-    validate_fasta_sequence,
-    detect_sequence_type,
     FastaSequence,
 )
 from sequences.enums import SequenceType
@@ -97,89 +95,6 @@ GGGG
     assert len(sequences) == 2
     assert sequences[0].sequence_data == "ACGTTGCA"
     assert sequences[1].sequence_data == "GGGG"
-
-
-# Tests for detect_sequence_type function
-
-
-@pytest.mark.parametrize(
-    "sequence_data,expected_type",
-    [
-        ("ACGT", SequenceType.DNA),
-        ("acgt", SequenceType.DNA),
-        ("AAAACCCCGGGGTTTT", SequenceType.DNA),
-        ("ACGU", SequenceType.RNA),
-        ("acgu", SequenceType.RNA),
-        ("AAAACCCCGGGGUUUU", SequenceType.RNA),
-        ("ARNDCEQGHILKMFPSTWYV", SequenceType.PROTEIN),
-        ("arndceqghilkmfpstwyv", SequenceType.PROTEIN),
-        ("MKLLILVLLVALVALAAS", SequenceType.PROTEIN),
-        ("ACGACG", SequenceType.DNA),  # ACG is valid for both, should detect DNA
-    ],
-)
-def test_detect_sequence_type(sequence_data, expected_type):
-    """Test detection of sequence types"""
-    assert detect_sequence_type(sequence_data) == expected_type
-
-
-@pytest.mark.parametrize(
-    "invalid_sequence",
-    [
-        "ACGT123",
-        "ACGT-N-N",
-        "ACGT*",
-    ],
-)
-def test_detect_invalid_characters(invalid_sequence):
-    """Test detection fails with invalid characters"""
-    with pytest.raises(ValidationError, match="invalid characters"):
-        detect_sequence_type(invalid_sequence)
-
-
-# Tests for validate_fasta_sequence function
-
-
-def test_validate_with_auto_detect():
-    """Test validation with auto-detection"""
-    fasta_seq = FastaSequence(header="seq1", sequence_data="ACGT")
-    seq_type = validate_fasta_sequence(fasta_seq)
-    assert seq_type == SequenceType.DNA
-
-
-def test_validate_with_expected_type_valid():
-    """Test validation with expected type that matches"""
-    fasta_seq = FastaSequence(header="seq1", sequence_data="ACGT")
-    seq_type = validate_fasta_sequence(fasta_seq, SequenceType.DNA)
-    assert seq_type == SequenceType.DNA
-
-
-def test_validate_with_expected_type_invalid():
-    """Test validation with expected type that doesn't match"""
-    fasta_seq = FastaSequence(header="seq1", sequence_data="ACGT")
-    with pytest.raises(ValidationError, match="contains invalid characters for RNA"):
-        validate_fasta_sequence(fasta_seq, SequenceType.RNA)
-
-
-def test_validate_empty_sequence():
-    """Test validation of empty sequence raises error"""
-    fasta_seq = FastaSequence(header="seq1", sequence_data="")
-    with pytest.raises(ValidationError, match="is empty"):
-        validate_fasta_sequence(fasta_seq)
-
-
-def test_validate_protein_as_dna_fails():
-    """Test that protein sequences fail DNA validation"""
-    fasta_seq = FastaSequence(header="seq1", sequence_data="MKLLILVLLVALVALAAS")
-    with pytest.raises(ValidationError, match="contains invalid characters for DNA"):
-        validate_fasta_sequence(fasta_seq, SequenceType.DNA)
-
-
-def test_validate_dna_as_protein_succeeds():
-    """Test that DNA sequences can validate as protein (subset)"""
-    # DNA chars (ACGT) are all valid protein amino acids
-    fasta_seq = FastaSequence(header="seq1", sequence_data="ACGT")
-    seq_type = validate_fasta_sequence(fasta_seq, SequenceType.PROTEIN)
-    assert seq_type == SequenceType.PROTEIN
 
 
 # Tests with realistic FASTA examples

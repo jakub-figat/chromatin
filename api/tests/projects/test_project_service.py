@@ -9,7 +9,8 @@ from projects.service import (
     get_project,
     list_user_projects,
     update_project,
-    delete_project, check_project_access,
+    delete_project,
+    check_project_access,
 )
 from projects.schemas import ProjectInput
 
