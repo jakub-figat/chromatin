@@ -93,6 +93,32 @@ docker-compose down
 docker-compose logs -f
 ```
 
+### Background Workers (Celery)
+
+The application uses Celery with Redis for background job processing (alignments, analysis, etc.). Run these commands from the `api/` directory:
+
+```bash
+# Start a Celery worker (single process)
+uv run celery -A core.celery_app worker --loglevel=info
+
+# Start worker with concurrency (multiple processes for CPU-bound work)
+uv run celery -A core.celery_app worker --loglevel=info --concurrency=4
+
+# Start worker with auto-reload (for development - reloads on code changes)
+uv run watchfiles "celery -A core.celery_app worker --loglevel=info" .
+
+# Monitor Celery tasks (events)
+uv run celery -A core.celery_app events
+
+# Inspect active tasks
+uv run celery -A core.celery_app inspect active
+
+# Purge all tasks from queue (careful!)
+uv run celery -A core.celery_app purge
+```
+
+**Note**: Workers require PostgreSQL and Redis to be running (`docker-compose up -d`).
+
 ### Frontend Development
 
 The frontend uses npm for package management. Run these commands from the `client/` directory:
@@ -193,9 +219,21 @@ The codebase follows a feature-based modular architecture:
   - `schemas.py`: Sequence request/response schemas (`SequenceListOutput` vs `SequenceDetailOutput`)
   - `fasta_parser.py`: FASTA file parsing utilities
 
+- **`jobs/`** - Background job processing module
+  - `models.py`: Job model with status tracking
+  - `enums.py`: JobStatus and JobType enums
+  - `routes.py`: Job CRUD endpoints (create, list, get, cancel, delete)
+  - `service.py`: Job business logic with ownership validation
+  - `schemas.py`: Job request/response schemas with discriminated union for job-specific params
+  - `tasks.py`: Celery tasks for async job processing
+
 - **`core/storage.py`** - Storage abstraction layer
   - Protocol-based design with `LocalStorageService` (aiofiles) and `S3StorageService` (aioboto3)
   - Async file I/O with streaming support for memory efficiency
+
+- **`core/celery_app.py`** - Celery application configuration
+  - Celery app instance with Redis broker and backend
+  - Task configuration (serialization, time limits, acks, retries)
 
 - **`main.py`** - FastAPI application setup with CORS middleware, router registration, and global exception handlers
 
@@ -262,6 +300,66 @@ The codebase follows a feature-based modular architecture:
 - **Protected routes**: `ProtectedRoute` component redirects unauthenticated users
 - **Form validation**: Zod schemas validate forms before submission
 - **Responsive design**: Tailwind utilities for mobile-first responsive layouts
+
+### Background Jobs Architecture
+
+The application uses **Celery** with **Redis** for asynchronous background job processing (e.g., sequence alignments, analysis):
+
+**Components:**
+- **PostgreSQL**: Durable storage for job records (status, params, results)
+- **Redis**: Task queue - workers poll for new jobs
+- **Celery Workers**: Separate Python processes executing jobs
+- **FastAPI**: Creates jobs and dispatches to Celery
+
+**Job Lifecycle:**
+1. **API receives request** → Creates job in DB with `PENDING` status
+2. **Job dispatched to Celery** → `celery_app.send_task("jobs.process_job", args=[job_id])`
+3. **Worker picks up task** → Updates status to `RUNNING` (committed immediately)
+4. **Job executes** → Worker processes the job (e.g., runs alignment)
+5. **Completion** → Status updated to `COMPLETED` with results, or `FAILED` with error message
+
+**Job Schema (Discriminated Union):**
+```python
+# Each job type has its own params schema
+class PairwiseAlignmentParams(CamelCaseModel):
+    job_type: Literal["PAIRWISE_ALIGNMENT"]
+    sequence_id_1: int
+    sequence_id_2: int
+
+# Union discriminated by job_type field
+JobParams = Annotated[
+    PairwiseAlignmentParams | OtherJobParams,
+    Field(discriminator="job_type"),
+]
+```
+
+**Task Implementation Pattern:**
+```python
+# tasks.py
+async def _process_job_async(job_id: int):
+    async with get_celery_db() as db:
+        # Update to RUNNING and commit immediately
+        await service.update_job_status(job_id, JobStatus.RUNNING, db)
+        await db.commit()
+
+        # Get job and validate params with Pydantic
+        job = await service.get_job_internal(job_id, db)
+        params = PairwiseAlignmentParams.model_validate(job.params)
+
+        # Process with typed params
+        result = await process_pairwise_alignment(params, db)
+
+        # Mark completed and commit
+        await service.mark_job_completed(job_id, result, db)
+        await db.commit()
+```
+
+**Key Features:**
+- **Separate DB sessions**: Workers use `@asynccontextmanager get_celery_db()` (not FastAPI deps)
+- **Immediate commits**: Status changes committed separately for visibility
+- **Type-safe params**: Pydantic schemas validate job params before processing
+- **Error handling**: `JobTask` base class auto-marks failed jobs in DB
+- **Ownership separation**: `get_job_internal()` bypasses ownership checks for workers
 
 ### Hybrid Storage Architecture
 
@@ -352,6 +450,11 @@ Required `.env` variables (see `core/config.py`):
 
 **Database:**
 - `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`
+
+**Redis/Celery:**
+- `REDIS_HOST` (default: localhost)
+- `REDIS_PORT` (default: 6379)
+- `REDIS_DB` (default: 0)
 
 **Authentication:**
 - `SECRET_KEY` (for JWT signing)

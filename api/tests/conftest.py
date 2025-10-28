@@ -13,6 +13,8 @@ from core.config import settings
 from projects import Project
 from sequences import Sequence
 from sequences.enums import SequenceType
+from jobs import Job
+from jobs.enums import JobStatus, JobType
 
 
 @pytest.fixture(scope="session")
@@ -217,6 +219,26 @@ async def test_sequence(
     await test_session.flush()
 
     return sequence
+
+
+@pytest.fixture
+async def test_job(test_session: AsyncSession, test_user: User) -> Job:
+    """Create a test job"""
+    job = Job(
+        job_type=JobType.PAIRWISE_ALIGNMENT,
+        params={
+            "job_type": JobType.PAIRWISE_ALIGNMENT.value,
+            "sequence_id_1": 1,
+            "sequence_id_2": 2,
+        },
+        status=JobStatus.PENDING,
+        user_id=test_user.id,
+    )
+
+    test_session.add(job)
+    await test_session.flush()
+
+    return job
 
 
 @pytest.fixture(autouse=True)

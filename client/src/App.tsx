@@ -8,6 +8,7 @@ import { DashboardPage } from '@/pages/dashboard-page'
 import { ProjectsPage } from '@/pages/projects-page'
 import { SequencesPage } from '@/pages/sequences-page'
 import { SequenceDetailPage } from '@/pages/sequence-detail-page'
+import { JobsPage } from '@/pages/jobs-page'
 
 function App() {
   return (
@@ -46,6 +47,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <SequenceDetailPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/jobs"
+            element={
+              <ProtectedRoute>
+                <JobsPage />
               </ProtectedRoute>
             }
           />

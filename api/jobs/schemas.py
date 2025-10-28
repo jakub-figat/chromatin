@@ -1,7 +1,32 @@
 from datetime import datetime
+from typing import Annotated, Literal
+
+from pydantic import Field
 
 from core.schemas import CamelCaseModel
 from jobs.enums import JobStatus, JobType
+
+
+# Job-specific params schemas (each includes job_type as discriminator)
+class PairwiseAlignmentParams(CamelCaseModel):
+    """Parameters for pairwise alignment job"""
+
+    job_type: Literal["PAIRWISE_ALIGNMENT"]
+    sequence_id_1: int
+    sequence_id_2: int
+
+
+# Union of all job params (discriminated by job_type field)
+JobParams = Annotated[
+    PairwiseAlignmentParams,  # Extend with | OtherJobParams as more job types are added
+    Field(discriminator="job_type"),
+]
+
+
+class JobInput(CamelCaseModel):
+    """Schema for creating a new job"""
+
+    params: JobParams
 
 
 class JobListOutput(CamelCaseModel):

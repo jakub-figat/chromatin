@@ -51,6 +51,14 @@ export function Navbar() {
                 Sequences
               </Button>
             </Link>
+            <Link to="/jobs">
+              <Button
+                variant={isActive('/jobs') ? 'secondary' : 'ghost'}
+                size="sm"
+              >
+                Jobs
+              </Button>
+            </Link>
           </nav>
         </div>
 

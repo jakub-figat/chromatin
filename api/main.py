@@ -13,6 +13,7 @@ from core.exceptions import (
 )
 from sequences.routes import router as sequences_router
 from projects.routes import router as projects_router
+from jobs.routes import router as jobs_router
 
 
 app = FastAPI(
@@ -42,6 +43,7 @@ async def health_check():
 app.include_router(auth_router, prefix="/api/auth", tags=["auth"])
 app.include_router(projects_router, prefix="/api/projects", tags=["projects"])
 app.include_router(sequences_router, prefix="/api/sequences", tags=["sequences"])
+app.include_router(jobs_router, prefix="/api/jobs", tags=["jobs"])
 
 
 @app.exception_handler(NotFoundError)
