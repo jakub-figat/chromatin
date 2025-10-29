@@ -8,6 +8,7 @@ from typing import Any
 from Bio import Align
 from celery import Task
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from core.celery_app import celery_app
 from core.config import settings
@@ -18,7 +19,10 @@ from jobs.schemas import PairwiseAlignmentParams
 from sequences.service import get_sequence_data, get_sequence_internal
 
 # Create async engine for Celery tasks (separate from FastAPI's engine)
-celery_engine = create_async_engine(settings.DATABASE_URL, echo=settings.DEBUG)
+# Use NullPool to avoid connection reuse issues with asyncio.run() in workers
+celery_engine = create_async_engine(
+    settings.DATABASE_URL, echo=settings.DEBUG, poolclass=NullPool
+)
 celery_session_maker = async_sessionmaker(
     celery_engine, class_=AsyncSession, expire_on_commit=False
 )
@@ -74,8 +78,8 @@ async def _process_job_async(job_id: int) -> dict[str, Any]:
     async with get_celery_db() as db:
         # Update status to RUNNING and commit immediately
         await service.update_job_status(job_id, JobStatus.RUNNING, db)
+        await db.commit()
 
-    async with get_celery_db() as db:
         # Get job details (without ownership check - workers process all jobs)
         job = await service.get_job_internal(job_id, db)
 
@@ -88,6 +92,7 @@ async def _process_job_async(job_id: int) -> dict[str, Any]:
 
         # Mark as completed with result and commit
         await service.mark_job_completed(job_id, result, db)
+        await db.commit()
 
         return result
 

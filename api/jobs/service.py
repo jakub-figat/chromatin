@@ -30,8 +30,8 @@ async def create_job(
     await db.flush()
     await db.refresh(db_job)
 
-    # Dispatch job to Celery worker
-    celery_app.send_task("jobs.process_job", args=[db_job.id])
+    # Dispatch job to Celery worker with job_id as task_id for easy revocation
+    celery_app.send_task("jobs.process_job", args=[db_job.id], task_id=str(db_job.id))
 
     return schemas.JobDetailOutput.model_validate(db_job)
 
@@ -146,7 +146,7 @@ async def mark_job_failed(
 async def cancel_job(
     job_id: int, user_id: int, db: AsyncSession
 ) -> schemas.JobDetailOutput:
-    """Cancel a pending or running job"""
+    """Cancel a pending or running job and revoke the Celery task"""
     stmt = select(models.Job).where(models.Job.id == job_id)
     job = await db.scalar(stmt)
 
@@ -161,6 +161,9 @@ async def cancel_job(
             "Only PENDING or RUNNING jobs can be cancelled."
         )
 
+    # Revoke the Celery task (terminate=True kills running tasks)
+    celery_app.control.revoke(str(job_id), terminate=True)
+
     job.status = JobStatus.CANCELLED
     job.completed_at = datetime.now()
 
@@ -171,7 +174,7 @@ async def cancel_job(
 
 
 async def delete_job(job_id: int, user_id: int, db: AsyncSession) -> None:
-    """Delete a job (only if owned by user)"""
+    """Delete a job and revoke its Celery task if running (only if owned by user)"""
     stmt = select(models.Job).where(models.Job.id == job_id)
     job = await db.scalar(stmt)
 
@@ -179,6 +182,10 @@ async def delete_job(job_id: int, user_id: int, db: AsyncSession) -> None:
         raise NotFoundError("Job", job_id)
 
     check_job_ownership(job, user_id)
+
+    # Revoke the Celery task if it's still pending or running
+    if job.status in [JobStatus.PENDING, JobStatus.RUNNING]:
+        celery_app.control.revoke(str(job_id), terminate=True)
 
     await db.delete(job)
     await db.flush()
