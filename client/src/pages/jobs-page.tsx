@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Navbar } from '@/components/navbar'
 import { CreateJobDialog } from '@/components/create-job-dialog'
+import { JobDetailDialog } from '@/components/job-detail-dialog'
 import { JobStatusBadge } from '@/components/job-status-badge'
-import { useJobs, useCancelJob, useDeleteJob } from '@/hooks/use-jobs'
+import { useJobs, useJob, useCancelJob, useDeleteJob } from '@/hooks/use-jobs'
 import type { JobListItem, JobStatus } from '@/types/job'
 import {
   Select,
@@ -18,9 +19,12 @@ import { Label } from '@/components/ui/label'
 
 export function JobsPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false)
+  const [selectedJobId, setSelectedJobId] = useState<number | undefined>()
   const [statusFilter, setStatusFilter] = useState<JobStatus | undefined>()
 
   const { data: jobs, isLoading, error, refetch } = useJobs({ status: statusFilter })
+  const { data: selectedJob } = useJob(selectedJobId)
   const cancelJob = useCancelJob()
   const deleteJob = useDeleteJob()
 
@@ -46,6 +50,16 @@ export function JobsPage() {
 
   const canCancel = (job: JobListItem) => {
     return job.status === 'PENDING' || job.status === 'RUNNING'
+  }
+
+  const handleViewDetails = (jobId: number) => {
+    setSelectedJobId(jobId)
+    setIsDetailDialogOpen(true)
+  }
+
+  const handleCloseDetailDialog = () => {
+    setIsDetailDialogOpen(false)
+    setSelectedJobId(undefined)
   }
 
   if (isLoading) {
@@ -172,6 +186,14 @@ export function JobsPage() {
 
                   {/* Actions */}
                   <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleViewDetails(job.id)}
+                      title="View details"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
                     {canCancel(job) && (
                       <Button
                         variant="ghost"
@@ -202,6 +224,12 @@ export function JobsPage() {
         <CreateJobDialog
           open={isCreateDialogOpen}
           onOpenChange={setIsCreateDialogOpen}
+        />
+
+        <JobDetailDialog
+          job={selectedJob || null}
+          open={isDetailDialogOpen}
+          onOpenChange={handleCloseDetailDialog}
         />
       </div>
     </>

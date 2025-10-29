@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
@@ -19,13 +20,18 @@ import {
 } from '@/components/ui/select'
 import { useCreateJob } from '@/hooks/use-jobs'
 import { useSequences } from '@/hooks/use-sequences'
-import type { JobType } from '@/types/job'
+import type { JobType, AlignmentType } from '@/types/job'
 import { Card } from '@/components/ui/card'
 
 const pairwiseAlignmentSchema = z.object({
   jobType: z.literal('PAIRWISE_ALIGNMENT'),
-  sequenceId1: z.number({ required_error: 'First sequence is required' }),
-  sequenceId2: z.number({ required_error: 'Second sequence is required' }),
+  sequenceId1: z.number({ message: 'First sequence is required' }),
+  sequenceId2: z.number({ message: 'Second sequence is required' }),
+  alignmentType: z.enum(['LOCAL', 'GLOBAL']),
+  matchScore: z.number().min(-10).max(10).optional(),
+  mismatchScore: z.number().min(-10).max(10).optional(),
+  gapOpenScore: z.number().min(-20).max(0).optional(),
+  gapExtendScore: z.number().min(-20).max(0).optional(),
 })
 
 type PairwiseAlignmentFormData = z.infer<typeof pairwiseAlignmentSchema>
@@ -100,21 +106,25 @@ function PairwiseAlignmentForm({
   isSubmitting: boolean
 }) {
   const { data: sequences, isLoading: isLoadingSequences } = useSequences()
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   const {
     handleSubmit,
     formState: { errors },
     watch,
     setValue,
+    register,
   } = useForm<PairwiseAlignmentFormData>({
     resolver: zodResolver(pairwiseAlignmentSchema),
     defaultValues: {
       jobType: 'PAIRWISE_ALIGNMENT',
+      alignmentType: 'GLOBAL',
     },
   })
 
   const sequenceId1 = watch('sequenceId1')
   const sequenceId2 = watch('sequenceId2')
+  const alignmentType = watch('alignmentType')
 
   return (
     <>
@@ -166,6 +176,104 @@ function PairwiseAlignmentForm({
           </Select>
           {errors.sequenceId2 && (
             <p className="text-sm text-red-500">{errors.sequenceId2.message}</p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label>Alignment Type *</Label>
+          <Select
+            value={alignmentType}
+            onValueChange={(value) => setValue('alignmentType', value as AlignmentType)}
+            disabled={isSubmitting}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select alignment type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="GLOBAL">Global (Needleman-Wunsch)</SelectItem>
+              <SelectItem value="LOCAL">Local (Smith-Waterman)</SelectItem>
+            </SelectContent>
+          </Select>
+          {errors.alignmentType && (
+            <p className="text-sm text-red-500">{errors.alignmentType.message}</p>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Global: Aligns entire sequences. Local: Finds best local region.
+          </p>
+        </div>
+
+        {/* Advanced Parameters */}
+        <div className="pt-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="w-full"
+          >
+            {showAdvanced ? 'Hide' : 'Show'} Advanced Scoring Parameters
+          </Button>
+
+          {showAdvanced && (
+            <div className="space-y-3 mt-4 p-4 border rounded-md">
+              <p className="text-sm text-muted-foreground mb-3">
+                Customize scoring parameters (leave empty to use defaults)
+              </p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Match Score</Label>
+                  <Input
+                    type="number"
+                    placeholder="2"
+                    {...register('matchScore', { valueAsNumber: true })}
+                    disabled={isSubmitting}
+                  />
+                  {errors.matchScore && (
+                    <p className="text-xs text-red-500">{errors.matchScore.message}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Mismatch Score</Label>
+                  <Input
+                    type="number"
+                    placeholder="-1"
+                    {...register('mismatchScore', { valueAsNumber: true })}
+                    disabled={isSubmitting}
+                  />
+                  {errors.mismatchScore && (
+                    <p className="text-xs text-red-500">{errors.mismatchScore.message}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Gap Open Score</Label>
+                  <Input
+                    type="number"
+                    placeholder="-5"
+                    {...register('gapOpenScore', { valueAsNumber: true })}
+                    disabled={isSubmitting}
+                  />
+                  {errors.gapOpenScore && (
+                    <p className="text-xs text-red-500">{errors.gapOpenScore.message}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Gap Extend Score</Label>
+                  <Input
+                    type="number"
+                    placeholder="-1"
+                    {...register('gapExtendScore', { valueAsNumber: true })}
+                    disabled={isSubmitting}
+                  />
+                  {errors.gapExtendScore && (
+                    <p className="text-xs text-red-500">{errors.gapExtendScore.message}</p>
+                  )}
+                </div>
+              </div>
+            </div>
           )}
         </div>
 
@@ -228,13 +336,28 @@ export function CreateJobDialog({ open, onOpenChange }: CreateJobDialogProps) {
   ) => {
     setIsSubmitting(true)
     try {
-      await createJob.mutateAsync({
-        params: {
-          jobType: data.jobType,
-          sequenceId1: data.sequenceId1,
-          sequenceId2: data.sequenceId2,
-        },
-      })
+      // Only include optional params if they have values
+      const params: any = {
+        jobType: data.jobType,
+        sequenceId1: data.sequenceId1,
+        sequenceId2: data.sequenceId2,
+        alignmentType: data.alignmentType,
+      }
+
+      if (data.matchScore !== undefined && !isNaN(data.matchScore)) {
+        params.matchScore = data.matchScore
+      }
+      if (data.mismatchScore !== undefined && !isNaN(data.mismatchScore)) {
+        params.mismatchScore = data.mismatchScore
+      }
+      if (data.gapOpenScore !== undefined && !isNaN(data.gapOpenScore)) {
+        params.gapOpenScore = data.gapOpenScore
+      }
+      if (data.gapExtendScore !== undefined && !isNaN(data.gapExtendScore)) {
+        params.gapExtendScore = data.gapExtendScore
+      }
+
+      await createJob.mutateAsync({ params })
       handleClose()
     } catch (error) {
       console.error('Failed to create job:', error)

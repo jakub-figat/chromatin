@@ -152,11 +152,35 @@ async def test_update_job_status(test_session: AsyncSession, test_job: Job):
 
 async def test_mark_job_completed(test_session: AsyncSession, test_job: Job):
     """Test marking job as completed"""
-    result = {"alignment": "ATGC", "score": 42.5}
+    # Use properly typed result matching PairwiseAlignmentResult schema
+    result = {
+        "job_type": "PAIRWISE_ALIGNMENT",
+        "sequence_id_1": 1,
+        "sequence_id_2": 2,
+        "sequence_name_1": "seq1",
+        "sequence_name_2": "seq2",
+        "alignment_type": "GLOBAL",
+        "alignment_score": 42.5,
+        "aligned_seq_1": "ATGC",
+        "aligned_seq_2": "ATGC",
+        "alignment_length": 4,
+        "matches": 4,
+        "mismatches": 0,
+        "gaps": 0,
+        "identity_percent": 100.0,
+        "cigar": "4M",
+        "scoring_params": {
+            "match_score": 2,
+            "mismatch_score": -1,
+            "gap_open_score": -5,
+            "gap_extend_score": -1,
+        },
+    }
     completed = await mark_job_completed(test_job.id, result, test_session)
 
     assert completed.status == JobStatus.COMPLETED
-    assert completed.result == result
+    assert completed.result is not None
+    assert completed.result.alignment_score == 42.5  # type: ignore
     assert completed.completed_at is not None
 
 
@@ -195,7 +219,31 @@ async def test_cancel_completed_job_fails(
     test_session: AsyncSession, test_user: User, test_job: Job
 ):
     """Test canceling a completed job raises ValidationError"""
-    await mark_job_completed(test_job.id, {"result": "done"}, test_session)
+    # Use properly typed result matching PairwiseAlignmentResult schema
+    result = {
+        "job_type": "PAIRWISE_ALIGNMENT",
+        "sequence_id_1": 1,
+        "sequence_id_2": 2,
+        "sequence_name_1": "seq1",
+        "sequence_name_2": "seq2",
+        "alignment_type": "GLOBAL",
+        "alignment_score": 42.5,
+        "aligned_seq_1": "ATGC",
+        "aligned_seq_2": "ATGC",
+        "alignment_length": 4,
+        "matches": 4,
+        "mismatches": 0,
+        "gaps": 0,
+        "identity_percent": 100.0,
+        "cigar": "4M",
+        "scoring_params": {
+            "match_score": 2,
+            "mismatch_score": -1,
+            "gap_open_score": -5,
+            "gap_extend_score": -1,
+        },
+    }
+    await mark_job_completed(test_job.id, result, test_session)
 
     with pytest.raises(ValidationError) as exc_info:
         await cancel_job(test_job.id, test_user.id, test_session)

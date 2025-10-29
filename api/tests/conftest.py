@@ -242,6 +242,18 @@ async def test_job(test_session: AsyncSession, test_user: User) -> Job:
 
 
 @pytest.fixture(autouse=True)
+def mock_celery_send_task(monkeypatch):
+    """Mock Celery send_task to prevent actual task dispatch in tests"""
+    from unittest.mock import MagicMock
+    from core.celery_app import celery_app
+
+    mock_send = MagicMock(return_value=None)
+    monkeypatch.setattr(celery_app, "send_task", mock_send)
+
+    yield mock_send
+
+
+@pytest.fixture(autouse=True)
 async def cleanup_storage():
     """Cleanup test storage directory after each test"""
     import shutil

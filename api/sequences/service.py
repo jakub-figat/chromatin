@@ -155,6 +155,29 @@ async def get_sequence(
     return SequenceOutput.model_validate(db_sequence)
 
 
+async def get_sequence_internal(sequence_id: int, db_session: AsyncSession) -> Sequence:
+    """
+    Get sequence by ID without ownership check (for internal use like worker tasks).
+
+    Args:
+        sequence_id: Sequence ID to fetch
+        db_session: Database session
+
+    Returns:
+        Sequence model instance
+
+    Raises:
+        NotFoundError: If sequence doesn't exist
+    """
+    stmt = select(Sequence).where(Sequence.id == sequence_id)
+    db_sequence = await db_session.scalar(stmt)
+
+    if not db_sequence:
+        raise NotFoundError("Sequence", sequence_id)
+
+    return db_sequence
+
+
 async def list_user_sequences(
     user_id: int,
     db_session: AsyncSession,

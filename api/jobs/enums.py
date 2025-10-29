@@ -11,3 +11,8 @@ class JobStatus(enum.Enum):
 
 class JobType(enum.Enum):
     PAIRWISE_ALIGNMENT = "PAIRWISE_ALIGNMENT"
+
+
+class AlignmentType(enum.Enum):
+    LOCAL = "LOCAL"  # Smith-Waterman
+    GLOBAL = "GLOBAL"  # Needleman-Wunsch

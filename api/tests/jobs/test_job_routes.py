@@ -8,7 +8,7 @@ from jobs import Job
 from jobs.enums import JobStatus
 
 
-async def test_create_job(client: AsyncClient, auth_headers):
+async def test_create_job(client: AsyncClient, auth_headers, mock_celery_send_task):
     """Test creating a job via API"""
     response = await client.post(
         "/api/jobs/",
@@ -29,6 +29,9 @@ async def test_create_job(client: AsyncClient, auth_headers):
     assert data["params"]["sequence_id_1"] == 1
     assert data["params"]["sequence_id_2"] == 2
     assert "id" in data
+
+    # Verify Celery task was dispatched
+    mock_celery_send_task.assert_called_once_with("jobs.process_job", args=[data["id"]])
 
 
 async def test_create_job_unauthorized(client: AsyncClient):
@@ -63,7 +66,7 @@ async def test_create_job_invalid_data(client: AsyncClient, auth_headers):
     assert response.status_code == 422
 
 
-async def test_list_jobs(client: AsyncClient, auth_headers):
+async def test_list_jobs(client: AsyncClient, auth_headers, mock_celery_send_task):
     """Test listing user's jobs"""
     # Create a few jobs
     for i in range(3):
@@ -85,6 +88,9 @@ async def test_list_jobs(client: AsyncClient, auth_headers):
     data = response.json()
     assert len(data) == 3
 
+    # Verify Celery task was dispatched for each job
+    assert mock_celery_send_task.call_count == 3
+
 
 async def test_list_jobs_with_status_filter(
     client: AsyncClient, auth_headers, test_job: Job
@@ -102,7 +108,9 @@ async def test_list_jobs_with_status_filter(
     assert data[0]["status"] == "PENDING"
 
 
-async def test_list_jobs_pagination(client: AsyncClient, auth_headers):
+async def test_list_jobs_pagination(
+    client: AsyncClient, auth_headers, mock_celery_send_task
+):
     """Test pagination in job listing"""
     # Create 5 jobs
     for i in range(5):
@@ -124,6 +132,9 @@ async def test_list_jobs_pagination(client: AsyncClient, auth_headers):
 
     assert response.status_code == 200
     assert len(response.json()) == 2
+
+    # Verify Celery task was dispatched for each job
+    assert mock_celery_send_task.call_count == 5
 
 
 async def test_list_jobs_unauthorized(client: AsyncClient):
@@ -191,7 +202,7 @@ async def test_cancel_other_user_job(
 
 
 async def test_cancel_completed_job(
-    client: AsyncClient, auth_headers, test_session: AsyncSession
+    client: AsyncClient, auth_headers, test_session: AsyncSession, mock_celery_send_task
 ):
     """Test canceling a completed job returns 400"""
     # Create job
@@ -208,10 +219,36 @@ async def test_cancel_completed_job(
     )
     job_id = create_response.json()["id"]
 
-    # Manually mark it as completed
+    # Verify Celery task was dispatched
+    mock_celery_send_task.assert_called_once_with("jobs.process_job", args=[job_id])
+
+    # Manually mark it as completed with properly typed result
     from jobs.service import mark_job_completed
 
-    await mark_job_completed(job_id, {"result": "done"}, test_session)
+    result = {
+        "job_type": "PAIRWISE_ALIGNMENT",
+        "sequence_id_1": 1,
+        "sequence_id_2": 2,
+        "sequence_name_1": "seq1",
+        "sequence_name_2": "seq2",
+        "alignment_type": "GLOBAL",
+        "alignment_score": 42.5,
+        "aligned_seq_1": "ATGC",
+        "aligned_seq_2": "ATGC",
+        "alignment_length": 4,
+        "matches": 4,
+        "mismatches": 0,
+        "gaps": 0,
+        "identity_percent": 100.0,
+        "cigar": "4M",
+        "scoring_params": {
+            "match_score": 2,
+            "mismatch_score": -1,
+            "gap_open_score": -5,
+            "gap_extend_score": -1,
+        },
+    }
+    await mark_job_completed(job_id, result, test_session)
 
     # Try to cancel
     response = await client.post(f"/api/jobs/{job_id}/cancel", headers=auth_headers)
