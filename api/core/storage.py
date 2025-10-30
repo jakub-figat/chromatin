@@ -92,6 +92,7 @@ class LocalStorageService:
     async def save(self, content: str, filename: str) -> str:
         """Save to local filesystem"""
         file_path = self.base_path / filename
+        file_path.parent.mkdir(parents=True, exist_ok=True)
 
         async with aiofiles.open(file_path, "w", encoding="utf-8") as f:
             await f.write(content)

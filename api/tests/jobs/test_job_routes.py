@@ -31,7 +31,37 @@ async def test_create_job(client: AsyncClient, auth_headers, mock_celery_send_ta
     assert "id" in data
 
     # Verify Celery task was dispatched
-    mock_celery_send_task.assert_called_once_with("jobs.process_job", args=[data["id"]])
+    mock_celery_send_task.assert_called_once_with(
+        "jobs.process_job", args=[data["id"]], task_id=str(data["id"])
+    )
+
+
+async def test_create_job_snake_case_payload(
+    client: AsyncClient, auth_headers, mock_celery_send_task
+):
+    """Test creating a job when the payload uses snake_case keys"""
+    response = await client.post(
+        "/api/jobs/",
+        headers=auth_headers,
+        json={
+            "params": {
+                "job_type": "PAIRWISE_ALIGNMENT",
+                "sequence_id_1": 1,
+                "sequence_id_2": 2,
+            }
+        },
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["jobType"] == "PAIRWISE_ALIGNMENT"
+    assert data["status"] == "PENDING"
+    assert data["params"]["sequence_id_1"] == 1
+    assert data["params"]["sequence_id_2"] == 2
+
+    mock_celery_send_task.assert_called_once_with(
+        "jobs.process_job", args=[data["id"]], task_id=str(data["id"])
+    )
 
 
 async def test_create_job_unauthorized(client: AsyncClient):
@@ -220,7 +250,9 @@ async def test_cancel_completed_job(
     job_id = create_response.json()["id"]
 
     # Verify Celery task was dispatched
-    mock_celery_send_task.assert_called_once_with("jobs.process_job", args=[job_id])
+    mock_celery_send_task.assert_called_once_with(
+        "jobs.process_job", args=[job_id], task_id=str(job_id)
+    )
 
     # Manually mark it as completed with properly typed result
     from jobs.service import mark_job_completed

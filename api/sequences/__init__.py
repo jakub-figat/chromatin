@@ -1,1 +1,1 @@
-from sequences.models import Sequence
+from sequences.models import Sequence, SequenceStructure

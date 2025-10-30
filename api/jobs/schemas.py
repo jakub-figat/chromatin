@@ -31,9 +31,20 @@ class PairwiseAlignmentParams(CamelCaseModel):
     )
 
 
+class StructurePredictionParams(CamelCaseModel):
+    """Parameters for protein structure prediction job"""
+
+    job_type: Literal["STRUCTURE_PREDICTION"]
+    sequence_id: int
+    force_recompute: bool = Field(
+        default=False,
+        description="Force a fresh prediction even if a cached structure exists",
+    )
+
+
 # Union of all job params (discriminated by job_type field)
 JobParams = Annotated[
-    PairwiseAlignmentParams,  # Extend with | OtherJobParams as more job types are added
+    PairwiseAlignmentParams | StructurePredictionParams,
     Field(discriminator="job_type"),
 ]
 
@@ -79,9 +90,30 @@ class PairwiseAlignmentResult(CamelCaseModel):
     scoring_params: ScoringParamsResult
 
 
+class StructurePredictionResult(CamelCaseModel):
+    """Result from protein structure prediction job"""
+
+    job_type: Literal["STRUCTURE_PREDICTION"]
+
+    sequence_id: int
+    sequence_name: str
+    structure_id: int
+
+    source: str
+    cached_result: bool
+
+    residue_count: int
+    mean_confidence: float
+    min_confidence: float
+    max_confidence: float
+
+    confidence_scores: list[float]
+    pdb_download_path: str
+
+
 # Union of all job results (discriminated by job_type field)
 JobResult = Annotated[
-    PairwiseAlignmentResult,  # Extend with | OtherJobResult as more job types are added
+    PairwiseAlignmentResult | StructurePredictionResult,
     Field(discriminator="job_type"),
 ]
 

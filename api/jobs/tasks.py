@@ -1,10 +1,12 @@
 """Celery tasks for background job processing"""
 
 import asyncio
+import hashlib
 import traceback
 from contextlib import asynccontextmanager
 from typing import Any
 
+import httpx
 from Bio import Align
 from celery import Task
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -15,8 +17,14 @@ from core.config import settings
 from core.exceptions import ValidationError
 from jobs import service
 from jobs.enums import AlignmentType, JobStatus, JobType
-from jobs.schemas import PairwiseAlignmentParams
-from sequences.service import get_sequence_data, get_sequence_internal
+from jobs.schemas import PairwiseAlignmentParams, StructurePredictionParams
+from sequences.enums import SequenceType
+from sequences.service import (
+    get_sequence_data,
+    get_sequence_internal,
+    get_sequence_structure_internal,
+    save_sequence_structure_prediction,
+)
 
 # Create async engine for Celery tasks (separate from FastAPI's engine)
 # Use NullPool to avoid connection reuse issues with asyncio.run() in workers
@@ -87,6 +95,9 @@ async def _process_job_async(job_id: int) -> dict[str, Any]:
         if job.job_type == JobType.PAIRWISE_ALIGNMENT:
             params = PairwiseAlignmentParams.model_validate(job.params)
             result = await process_pairwise_alignment(params, db)
+        elif job.job_type == JobType.STRUCTURE_PREDICTION:
+            params = StructurePredictionParams.model_validate(job.params)
+            result = await process_structure_prediction(params, db)
         else:
             raise ValueError(f"Unknown job type: {job.job_type}")
 
@@ -280,4 +291,115 @@ async def process_pairwise_alignment(
             "gap_open_score": params.gap_open_score,
             "gap_extend_score": params.gap_extend_score,
         },
+    }
+
+
+def _extract_confidence_scores_from_pdb(pdb_content: str) -> list[float]:
+    """Parse per-residue confidence (pLDDT) scores from a PDB payload."""
+    scores: list[float] = []
+    for line in pdb_content.splitlines():
+        if not line.startswith(("ATOM", "HETATM")):
+            continue
+        try:
+            score = float(line[60:66].strip())
+        except ValueError:
+            continue
+        scores.append(score)
+    return scores
+
+
+async def _request_esmfold_prediction(sequence: str) -> str:
+    """Submit a sequence to the ESMFold API and return the PDB payload."""
+    timeout = httpx.Timeout(settings.ESMFOLD_TIMEOUT_SECONDS, connect=30.0)
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                settings.ESMFOLD_API_URL,
+                data={"sequence": sequence},
+                headers={"Accept": "text/plain"},
+            )
+            response.raise_for_status()
+            return response.text
+    except httpx.HTTPStatusError as exc:
+        detail = exc.response.text.strip()
+        if len(detail) > 200:
+            detail = detail[:200] + "..."
+        raise ValidationError(
+            f"ESMFold API error {exc.response.status_code}: {detail or exc.message}"
+        ) from exc
+    except httpx.RequestError as exc:
+        raise ValidationError(f"ESMFold API request failed: {exc}") from exc
+
+
+async def process_structure_prediction(
+    params: StructurePredictionParams, db: AsyncSession
+) -> dict[str, Any]:
+    """Process a protein structure prediction job via the ESMFold API."""
+
+    sequence = await get_sequence_internal(params.sequence_id, db)
+
+    if sequence.sequence_type != SequenceType.PROTEIN:
+        raise ValidationError(
+            "Structure prediction is only supported for protein sequences."
+        )
+
+    if sequence.length > settings.ESMFOLD_MAX_RESIDUES:
+        raise ValidationError(
+            f"Sequence length {sequence.length} exceeds ESMFold limit of {settings.ESMFOLD_MAX_RESIDUES} residues."
+        )
+
+    sequence_data = await get_sequence_data(sequence)
+    sequence_hash = hashlib.sha256(sequence_data.encode("utf-8")).hexdigest()
+
+    existing_structure = await get_sequence_structure_internal(sequence.id, db)
+    if (
+        existing_structure
+        and existing_structure.sequence_hash == sequence_hash
+        and not params.force_recompute
+    ):
+        return {
+            "job_type": "STRUCTURE_PREDICTION",
+            "sequence_id": sequence.id,
+            "sequence_name": sequence.name,
+            "structure_id": existing_structure.id,
+            "source": existing_structure.source,
+            "cached_result": True,
+            "residue_count": existing_structure.residue_count,
+            "mean_confidence": existing_structure.mean_confidence,
+            "min_confidence": existing_structure.min_confidence,
+            "max_confidence": existing_structure.max_confidence,
+            "confidence_scores": existing_structure.confidence_scores,
+            "pdb_download_path": f"/api/sequences/{sequence.id}/structure/download",
+        }
+
+    pdb_content = await _request_esmfold_prediction(sequence_data)
+    confidence_scores = _extract_confidence_scores_from_pdb(pdb_content)
+
+    if not confidence_scores:
+        raise ValidationError(
+            "ESMFold response did not contain residue confidence scores."
+        )
+
+    structure = await save_sequence_structure_prediction(
+        sequence,
+        pdb_content,
+        confidence_scores,
+        sequence_hash,
+        db,
+    )
+
+    return {
+        "job_type": "STRUCTURE_PREDICTION",
+        "sequence_id": sequence.id,
+        "sequence_name": sequence.name,
+        "structure_id": structure.id,
+        "source": structure.source,
+        "cached_result": False,
+        "residue_count": structure.residue_count,
+        "mean_confidence": structure.mean_confidence,
+        "min_confidence": structure.min_confidence,
+        "max_confidence": structure.max_confidence,
+        "confidence_scores": structure.confidence_scores,
+        "pdb_download_path": f"/api/sequences/{sequence.id}/structure/download",
     }

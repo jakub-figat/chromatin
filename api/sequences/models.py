@@ -1,4 +1,5 @@
 from sqlalchemy import String, ForeignKey, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, relationship, mapped_column
 
 from common.models import User
@@ -35,8 +36,30 @@ class Sequence(Base):
 
     user: Mapped[User] = relationship(back_populates="sequences", lazy="raise")
     project: Mapped[Project] = relationship(back_populates="sequences", lazy="raise")
+    structure: Mapped["SequenceStructure | None"] = relationship(
+        back_populates="sequence", lazy="raise", cascade="all, delete-orphan"
+    )
 
     @property
     def uses_file_storage(self) -> bool:
         """Returns True if sequence is stored in file, False if in database"""
         return self.file_path is not None
+
+
+class SequenceStructure(Base):
+    __tablename__ = "sequence_structures"
+
+    sequence_id: Mapped[int] = mapped_column(
+        ForeignKey("sequences.id", ondelete="CASCADE"), unique=True
+    )
+    file_path: Mapped[str] = mapped_column(String(500))
+    source: Mapped[str] = mapped_column(String(50))
+    sequence_hash: Mapped[str] = mapped_column(String(64))
+
+    residue_count: Mapped[int]
+    mean_confidence: Mapped[float]
+    min_confidence: Mapped[float]
+    max_confidence: Mapped[float]
+    confidence_scores: Mapped[list[float]] = mapped_column(JSONB)
+
+    sequence: Mapped[Sequence] = relationship(back_populates="structure", lazy="raise")

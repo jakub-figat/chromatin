@@ -11,6 +11,7 @@ class JobStatus(enum.Enum):
 
 class JobType(enum.Enum):
     PAIRWISE_ALIGNMENT = "PAIRWISE_ALIGNMENT"
+    STRUCTURE_PREDICTION = "STRUCTURE_PREDICTION"
 
 
 class AlignmentType(enum.Enum):

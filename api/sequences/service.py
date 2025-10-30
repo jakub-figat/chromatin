@@ -1,5 +1,6 @@
 from typing import AsyncIterator
 import hashlib
+import uuid
 
 from fastapi import UploadFile
 from sqlalchemy import select
@@ -13,13 +14,14 @@ from core.exceptions import ValidationError, NotFoundError
 from core.config import settings
 from core.storage import get_storage_service
 from projects.service import check_project_access
-from sequences import Sequence
+from sequences import Sequence, SequenceStructure
 from sequences.enums import SequenceType
 from sequences.fasta_parser import parse_fasta
 from sequences.schemas import (
     SequenceInput,
     SequenceOutput,
     SequenceListOutput,
+    SequenceStructureOutput,
     FastaUploadOutput,
 )
 from sequences.consts import DNA_CHARS, RNA_CHARS, PROTEIN_CHARS, AMINO_ACID_WEIGHTS
@@ -141,7 +143,10 @@ async def get_sequence(
     stmt = (
         select(Sequence)
         .where(Sequence.id == sequence_id)
-        .options(joinedload(Sequence.project))
+        .options(
+            joinedload(Sequence.project),
+            joinedload(Sequence.structure),
+        )
     )
 
     db_sequence = await db_session.scalar(stmt)
@@ -176,6 +181,186 @@ async def get_sequence_internal(sequence_id: int, db_session: AsyncSession) -> S
         raise NotFoundError("Sequence", sequence_id)
 
     return db_sequence
+
+
+def _calculate_confidence_stats(scores: list[float]) -> tuple[float, float, float]:
+    """Compute rounded summary statistics for per-residue confidence values."""
+    if not scores:
+        return 0.0, 0.0, 0.0
+
+    mean_val = round(sum(scores) / len(scores), 2)
+    min_val = round(min(scores), 2)
+    max_val = round(max(scores), 2)
+    return mean_val, min_val, max_val
+
+
+async def get_sequence_structure_internal(
+    sequence_id: int, db_session: AsyncSession
+) -> SequenceStructure | None:
+    """Fetch structure entry for a sequence without ownership check."""
+    stmt = select(SequenceStructure).where(SequenceStructure.sequence_id == sequence_id)
+    return await db_session.scalar(stmt)
+
+
+async def save_sequence_structure_prediction(
+    sequence: Sequence,
+    pdb_content: str,
+    confidence_scores: list[float],
+    sequence_hash: str,
+    db_session: AsyncSession,
+    source: str = "ESMFOLD_API",
+) -> SequenceStructure:
+    """
+    Persist a structure prediction and associated metadata.
+
+    Creates or updates the sequence_structures entry and stores the PDB payload
+    via the configured storage backend.
+    """
+    storage = get_storage_service()
+
+    # Store PDB with a unique filename so concurrent runs don't collide
+    filename = f"struct_{sequence.id}_{uuid.uuid4().hex}.pdb"
+    new_file_path = await storage.save(pdb_content, filename)
+
+    mean_conf, min_conf, max_conf = _calculate_confidence_stats(confidence_scores)
+    residue_count = len(confidence_scores)
+
+    existing = await get_sequence_structure_internal(sequence.id, db_session)
+
+    if existing:
+        previous_path = (
+            existing.file_path if existing.file_path != new_file_path else None
+        )
+
+        existing.file_path = new_file_path
+        existing.source = source
+        existing.sequence_hash = sequence_hash
+        existing.residue_count = residue_count
+        existing.mean_confidence = mean_conf
+        existing.min_confidence = min_conf
+        existing.max_confidence = max_conf
+        existing.confidence_scores = confidence_scores
+
+        await db_session.flush()
+        await db_session.refresh(existing)
+
+        if previous_path:
+            try:
+                await storage.delete(previous_path)
+            except Exception:
+                # Ignore storage cleanup failures
+                pass
+
+        return existing
+
+    structure = SequenceStructure(
+        sequence_id=sequence.id,
+        file_path=new_file_path,
+        source=source,
+        sequence_hash=sequence_hash,
+        residue_count=residue_count,
+        mean_confidence=mean_conf,
+        min_confidence=min_conf,
+        max_confidence=max_conf,
+        confidence_scores=confidence_scores,
+    )
+
+    db_session.add(structure)
+    await db_session.flush()
+    await db_session.refresh(structure)
+    return structure
+
+
+async def delete_sequence_structure(
+    structure: SequenceStructure, db_session: AsyncSession
+) -> None:
+    """Remove a stored structure and its backing file."""
+    storage = get_storage_service()
+    try:
+        await storage.delete(structure.file_path)
+    except Exception:
+        # Ignore storage cleanup failures
+        pass
+
+    await db_session.delete(structure)
+    await db_session.flush()
+
+
+async def get_sequence_structure(
+    sequence_id: int, user_id: int, db_session: AsyncSession
+) -> SequenceStructureOutput:
+    """Return structure metadata for a sequence if available."""
+    stmt = (
+        select(Sequence)
+        .where(Sequence.id == sequence_id)
+        .options(
+            joinedload(Sequence.project),
+            joinedload(Sequence.structure),
+        )
+    )
+    db_sequence = await db_session.scalar(stmt)
+
+    if not db_sequence:
+        raise NotFoundError("Sequence", sequence_id)
+
+    check_project_access(
+        db_sequence.project, user_id, AccessType.READ, raise_exception=True
+    )
+
+    if not db_sequence.structure:
+        raise NotFoundError("Structure", sequence_id)
+
+    structure = db_sequence.structure
+
+    return SequenceStructureOutput(
+        id=structure.id,
+        sequence_id=db_sequence.id,
+        sequence_name=db_sequence.name,
+        source=structure.source,
+        residue_count=structure.residue_count,
+        mean_confidence=structure.mean_confidence,
+        min_confidence=structure.min_confidence,
+        max_confidence=structure.max_confidence,
+        confidence_scores=structure.confidence_scores,
+        created_at=structure.created_at,
+        updated_at=structure.updated_at,
+        download_path=f"/api/sequences/{db_sequence.id}/structure/download",
+    )
+
+
+async def stream_structure_download(
+    sequence_id: int, user_id: int, db_session: AsyncSession
+) -> AsyncIterator[bytes]:
+    """
+    Stream the stored PDB structure for a sequence.
+    """
+    stmt = (
+        select(Sequence)
+        .where(Sequence.id == sequence_id)
+        .options(
+            joinedload(Sequence.project),
+            joinedload(Sequence.structure),
+        )
+    )
+    db_sequence = await db_session.scalar(stmt)
+
+    if not db_sequence:
+        raise NotFoundError("Sequence", sequence_id)
+
+    check_project_access(
+        db_sequence.project, user_id, AccessType.READ, raise_exception=True
+    )
+
+    if not db_sequence.structure:
+        raise NotFoundError("Structure", sequence_id)
+
+    storage = get_storage_service()
+
+    async def _stream() -> AsyncIterator[bytes]:
+        async for chunk in await storage.read_chunks(db_sequence.structure.file_path):
+            yield chunk
+
+    return _stream()
 
 
 async def list_user_sequences(
@@ -228,7 +413,10 @@ async def update_sequence(
     stmt = (
         select(Sequence)
         .where(Sequence.id == sequence_id)
-        .options(joinedload(Sequence.project))
+        .options(
+            joinedload(Sequence.project),
+            joinedload(Sequence.structure),
+        )
     )
 
     db_sequence = await db_session.scalar(stmt)
@@ -260,6 +448,17 @@ async def update_sequence(
     # Store old file path for cleanup if needed
     old_file_path = db_sequence.file_path
 
+    structure_to_remove: SequenceStructure | None = None
+    if db_sequence.structure:
+        if sequence_input.sequence_type != SequenceType.PROTEIN:
+            structure_to_remove = db_sequence.structure
+        else:
+            new_hash = hashlib.sha256(
+                sequence_input.sequence_data.encode("utf-8")
+            ).hexdigest()
+            if db_sequence.structure.sequence_hash != new_hash:
+                structure_to_remove = db_sequence.structure
+
     # Calculate properties
     seq_length = len(sequence_input.sequence_data)
     gc_content = calculate_gc_content(
@@ -289,6 +488,9 @@ async def update_sequence(
             # Don't fail update if file cleanup fails
             pass
 
+    if structure_to_remove:
+        await delete_sequence_structure(structure_to_remove, db_session)
+
     await db_session.flush()
     await db_session.refresh(db_sequence)
 
@@ -301,7 +503,7 @@ async def delete_sequence(
     stmt = (
         select(Sequence)
         .where(Sequence.id == sequence_id)
-        .options(joinedload(Sequence.project))
+        .options(joinedload(Sequence.project), joinedload(Sequence.structure))
     )
 
     db_sequence = await db_session.scalar(stmt)
@@ -321,6 +523,9 @@ async def delete_sequence(
         except Exception:
             # Don't fail delete if file cleanup fails
             pass
+
+    if db_sequence.structure:
+        await delete_sequence_structure(db_sequence.structure, db_session)
 
     await db_session.delete(db_sequence)
     await db_session.flush()

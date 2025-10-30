@@ -73,6 +73,11 @@ class Settings(BaseSettings):
     # Local storage (DEV)
     LOCAL_STORAGE_PATH: str = "/tmp/chromatin/sequences"
 
+    # ESMFold integration
+    ESMFOLD_API_URL: str = "https://api.esmatlas.com/foldSequence/"
+    ESMFOLD_TIMEOUT_SECONDS: int = 300
+    ESMFOLD_MAX_RESIDUES: int = 400
+
     # S3 storage (PROD)
     S3_BUCKET: str | None = None
     S3_REGION: str = "us-east-1"

@@ -9,6 +9,7 @@ from sequences.schemas import (
     SequenceOutput,
     SequenceListOutput,
     SequenceInput,
+    SequenceStructureOutput,
     FastaUploadOutput,
     BatchDownloadInput,
 )
@@ -21,6 +22,8 @@ from sequences.service import (
     upload_fasta,
     stream_sequence_download,
     stream_batch_download,
+    get_sequence_structure,
+    stream_structure_download,
 )
 from sequences.enums import SequenceType
 
@@ -100,6 +103,40 @@ async def delete_sequence_endpoint(
     db_session: AsyncSession = Depends(get_db),
 ):
     await delete_sequence(sequence_id, current_user.id, db_session)
+
+
+@router.get(
+    "/{sequence_id}/structure",
+    response_model=SequenceStructureOutput,
+)
+async def get_sequence_structure_detail(
+    sequence_id: int,
+    current_user: User = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db),
+):
+    """Retrieve metadata for a stored protein structure prediction."""
+    return await get_sequence_structure(sequence_id, current_user.id, db_session)
+
+
+@router.get("/{sequence_id}/structure/download")
+async def download_sequence_structure_endpoint(
+    sequence_id: int,
+    current_user: User = Depends(get_current_user),
+    db_session: AsyncSession = Depends(get_db),
+):
+    """Download the predicted protein structure as a PDB file."""
+    structure_metadata = await get_sequence_structure(
+        sequence_id, current_user.id, db_session
+    )
+    stream = await stream_structure_download(sequence_id, current_user.id, db_session)
+
+    filename = f"{structure_metadata.sequence_name}_structure.pdb"
+
+    return StreamingResponse(
+        stream,
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/{sequence_id}/download")

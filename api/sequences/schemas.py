@@ -78,6 +78,23 @@ class SequenceDetailOutput(CamelCaseModel):
 SequenceOutput = SequenceDetailOutput
 
 
+class SequenceStructureOutput(CamelCaseModel):
+    """Metadata for a stored protein structure prediction."""
+
+    id: int
+    sequence_id: int
+    sequence_name: str
+    source: str
+    residue_count: int
+    mean_confidence: float
+    min_confidence: float
+    max_confidence: float
+    confidence_scores: list[float]
+    created_at: datetime
+    updated_at: datetime
+    download_path: str
+
+
 class FastaUploadInput(CamelCaseModel):
     project_id: int
     sequence_type: SequenceType | None = Field(
